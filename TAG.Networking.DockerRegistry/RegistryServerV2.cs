@@ -11,14 +11,18 @@ namespace TAG.Networking.DockerRegistry
 	/// </summary>
 	public class RegistryServerV2 : HttpSynchronousResource
 	{
-		private  static readonly Regex regexName = new Regex("[a-z0-9]+(?:[._-][a-z0-9]+)*", RegexOptions.Compiled | RegexOptions.Singleline);
+		private static readonly Regex regexName = new Regex("[a-z0-9]+(?:[._-][a-z0-9]+)*", RegexOptions.Compiled | RegexOptions.Singleline);
+		
+		private readonly HttpAuthenticationScheme[] authenticationSchemes = null;
 
 		/// <summary>
 		/// Docker Registry API v2.
 		/// </summary>
-		public RegistryServerV2()
+		/// <param name="AuthenticationSchemes">Authentication schemes.</param>
+		public RegistryServerV2(params HttpAuthenticationScheme[] AuthenticationSchemes)
 			: base("/v2")
 		{
+			this.authenticationSchemes = AuthenticationSchemes;
 		}
 
 		/// <summary>
@@ -30,6 +34,16 @@ namespace TAG.Networking.DockerRegistry
 		/// If resource uses sessions (i.e. uses a session cookie).
 		/// </summary>
 		public override bool UserSessions => true;
+
+		/// <summary>
+		/// Gets available authentication schemes
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <returns>Array of authentication schemes.</returns>
+		public override HttpAuthenticationScheme[] GetAuthenticationSchemes(HttpRequest Request)
+		{
+			return this.authenticationSchemes;
+		}
 
 		/// <summary>
 		/// Checks if a Name is a valid Docker name.
