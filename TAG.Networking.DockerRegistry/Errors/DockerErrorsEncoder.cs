@@ -38,7 +38,7 @@ namespace TAG.Networking.DockerRegistry.Errors
 		/// <returns>If the encoder encodes objects of the given type.</returns>
 		public bool Encodes(object Object, out Grade Grade, params string[] AcceptedContentTypes)
 		{
-			if (Object is DockerErrors Errors || Object is DockerError || Object is DockerErrorCode)
+			if (Object is DockerErrors || Object is DockerError || Object is DockerErrorCode)
 			{
 				Grade = Grade.Ok;
 				return true;
