@@ -5,6 +5,7 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
+using Waher.Content;
 using Waher.Networking.HTTP;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
@@ -18,7 +19,8 @@ namespace TAG.Networking.DockerRegistry
 	/// Reference:
 	/// https://docs.docker.com/registry/spec/api/
 	/// </summary>
-	public class RegistryServerV2 : HttpAsynchronousResource, IHttpGetMethod, IHttpPostMethod
+	public class RegistryServerV2 : HttpAsynchronousResource, IHttpGetMethod, IHttpPostMethod, IHttpDeleteMethod,
+		IHttpPatchMethod, IHttpPatchRangesMethod, IHttpPutMethod, IHttpPutRangesMethod
 	{
 		private static readonly Regex regexName = new Regex("[a-z0-9]+(?:[._-][a-z0-9]+)*", RegexOptions.Compiled | RegexOptions.Singleline);
 		private static readonly string[] keyResourceNames = new string[]
@@ -62,6 +64,21 @@ namespace TAG.Networking.DockerRegistry
 		public bool AllowsPOST => true;
 
 		/// <summary>
+		/// If DELETE method is supported.
+		/// </summary>
+		public bool AllowsDELETE => true;
+
+		/// <summary>
+		/// If PUT method is supported.
+		/// </summary>
+		public bool AllowsPUT => true;
+
+		/// <summary>
+		/// If PATCH method is supported.
+		/// </summary>
+		public bool AllowsPATCH => true;
+
+		/// <summary>
 		/// Gets available authentication schemes
 		/// </summary>
 		/// <param name="Request">Request object.</param>
@@ -101,6 +118,63 @@ namespace TAG.Networking.DockerRegistry
 		public Task POST(HttpRequest Request, HttpResponse Response)
 		{
 			this.ProcessPost(Request, Response);
+			return Task.CompletedTask;
+		}
+
+		/// <summary>
+		/// Executes a DELETE method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		public Task DELETE(HttpRequest Request, HttpResponse Response)
+		{
+			this.ProcessDelete(Request, Response);
+			return Task.CompletedTask;
+		}
+
+		/// <summary>
+		/// Executes a PATCH method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		public Task PATCH(HttpRequest Request, HttpResponse Response)
+		{
+			this.ProcessPatch(Request, Response, null);
+			return Task.CompletedTask;
+		}
+
+		/// <summary>
+		/// Executes a PATCH method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		/// <param name="Interval">Range interval.</param>
+		public Task PATCH(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
+		{
+			this.ProcessPatch(Request, Response, Interval);
+			return Task.CompletedTask;
+		}
+		
+		/// <summary>
+		/// Executes a PUT method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		public Task PUT(HttpRequest Request, HttpResponse Response)
+		{
+			this.ProcessPut(Request, Response, null);
+			return Task.CompletedTask;
+		}
+
+		/// <summary>
+		/// Executes a PUT method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		/// <param name="Interval">Range interval.</param>
+		public Task PUT(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
+		{
+			this.ProcessPut(Request, Response, Interval);
 			return Task.CompletedTask;
 		}
 
@@ -175,20 +249,7 @@ namespace TAG.Networking.DockerRegistry
 		{
 			try
 			{
-				string Resource = Request.SubPath;
-
-				if (Resource == "/" || string.IsNullOrEmpty(Resource))  // API Version Check
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
-
-				string[] ResourceParts = Resource.Split('/');
-				int Pos = 0;
-				int Len = ResourceParts.Length;
-
-				if (!string.IsNullOrEmpty(ResourceParts[Pos++]))
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
-
-				if (!TryGetKeyResourceName(ResourceParts, out string KeyResourceName, out string[] Names, ref Pos))
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
 
 				switch (KeyResourceName)
 				{
@@ -249,6 +310,107 @@ namespace TAG.Networking.DockerRegistry
 			{
 				await Response.SendResponse(ex);
 			}
+		}
+
+		private async void ProcessPatch(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
+		{
+			try
+			{
+				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
+
+				switch (KeyResourceName)
+				{
+					case "blobs":
+					// TODO
+					case "manifests":
+					// TODO
+					case "_catalog":
+					// TODO
+					case "tags":
+					// TODO
+					default:
+						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				}
+
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+			}
+			catch (Exception ex)
+			{
+				await Response.SendResponse(ex);
+			}
+		}
+
+		private async void ProcessPut(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
+		{
+			try
+			{
+				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
+
+				switch (KeyResourceName)
+				{
+					case "blobs":
+					// TODO
+					case "manifests":
+					// TODO
+					case "_catalog":
+					// TODO
+					case "tags":
+					// TODO
+					default:
+						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				}
+
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+			}
+			catch (Exception ex)
+			{
+				await Response.SendResponse(ex);
+			}
+		}
+
+		private async void ProcessDelete(HttpRequest Request, HttpResponse Response)
+		{
+			try
+			{
+				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
+
+				switch (KeyResourceName)
+				{
+					case "blobs":
+					// TODO
+					case "manifests":
+					// TODO
+					case "_catalog":
+					// TODO
+					case "tags":
+					// TODO
+					default:
+						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				}
+
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+			}
+			catch (Exception ex)
+			{
+				await Response.SendResponse(ex);
+			}
+		}
+
+		private static void Prepare(string Resource, out string[] ResourceParts, out int Pos, out int Len, 
+			out string KeyResourceName, out string[] Names)
+		{
+			if (Resource == "/" || string.IsNullOrEmpty(Resource))  // API Version Check
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+
+			ResourceParts = Resource.Split('/');
+			Len = ResourceParts.Length;
+			Pos = 0;
+
+			if (!string.IsNullOrEmpty(ResourceParts[Pos++]))
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+
+			if (!TryGetKeyResourceName(ResourceParts, out KeyResourceName, out Names, ref Pos))
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
 		}
 
 		private static string NameUrl(string[] Names)
