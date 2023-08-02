@@ -5,10 +5,10 @@ using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
-using Waher.Content;
 using Waher.Networking.HTTP;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
+using Waher.Runtime.Cache;
 using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry
@@ -20,7 +20,7 @@ namespace TAG.Networking.DockerRegistry
 	/// https://docs.docker.com/registry/spec/api/
 	/// </summary>
 	public class RegistryServerV2 : HttpAsynchronousResource, IHttpGetMethod, IHttpPostMethod, IHttpDeleteMethod,
-		IHttpPatchMethod, IHttpPatchRangesMethod, IHttpPutMethod, IHttpPutRangesMethod
+		IHttpPatchMethod, IHttpPatchRangesMethod, IHttpPutMethod, IHttpPutRangesMethod, IDisposable
 	{
 		private static readonly Regex regexName = new Regex("[a-z0-9]+(?:[._-][a-z0-9]+)*", RegexOptions.Compiled | RegexOptions.Singleline);
 		private static readonly string[] keyResourceNames = new string[]
@@ -31,7 +31,8 @@ namespace TAG.Networking.DockerRegistry
 			"tags"
 		};
 
-		private readonly HttpAuthenticationScheme[] authenticationSchemes = null;
+		private readonly HttpAuthenticationScheme[] authenticationSchemes;
+		private readonly Cache<Guid, BlobUpload> uploads = new Cache<Guid, BlobUpload>(int.MaxValue, TimeSpan.MaxValue, TimeSpan.FromHours(1));
 
 		/// <summary>
 		/// Docker Registry API v2.
@@ -41,6 +42,7 @@ namespace TAG.Networking.DockerRegistry
 			: base("/v2")
 		{
 			this.authenticationSchemes = AuthenticationSchemes;
+			this.uploads.Removed += this.Uploads_Removed;
 		}
 
 		/// <summary>
@@ -99,6 +101,11 @@ namespace TAG.Networking.DockerRegistry
 			return M.Success && M.Index == 0 && M.Length == Name.Length;
 		}
 
+		private void Uploads_Removed(object Sender, CacheItemEventArgs<Guid, BlobUpload> e)
+		{
+			e.Value.Dispose();
+		}
+
 		/// <summary>
 		/// Executes a GET method.
 		/// </summary>
@@ -154,7 +161,7 @@ namespace TAG.Networking.DockerRegistry
 			this.ProcessPatch(Request, Response, Interval);
 			return Task.CompletedTask;
 		}
-		
+
 		/// <summary>
 		/// Executes a PUT method.
 		/// </summary>
@@ -267,6 +274,8 @@ namespace TAG.Networking.DockerRegistry
 
 								Guid Uuid = Guid.NewGuid();
 
+								this.uploads[Uuid] = new BlobUpload(Uuid);
+
 								Response.StatusCode = 202;
 								Response.StatusMessage = "Accepted";
 								Response.SetHeader("Location", NameUrl(Names) + "/blobs/uploads/" + Uuid.ToString());
@@ -321,6 +330,43 @@ namespace TAG.Networking.DockerRegistry
 				switch (KeyResourceName)
 				{
 					case "blobs":
+						if (Pos >= ResourceParts.Length)
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
+
+						if (ResourceParts[Pos] == "uploads")
+						{
+							Pos++;
+
+							if (Pos == ResourceParts.Length ||
+								string.IsNullOrEmpty(ResourceParts[Pos]) ||
+								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid) ||
+								!Request.HasData)
+							{
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+							}
+
+							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."));
+
+							Request.DataStream.Position = 0;
+
+							long Offset = Interval?.First ?? 0L;
+							long Count = Interval is null ? Request.DataStream.Length : Interval.Last - Interval.First + 1;
+
+							Response.StatusCode = 202;
+							Response.StatusMessage = "Accepted";
+							Response.SetHeader("Location", NameUrl(Names) + "/blobs/uploads/" + Uuid.ToString());
+							Response.SetHeader("Range", "0-0");
+							Response.SetHeader("Docker-Upload-UUID", Uuid.ToString());
+							await Response.SendResponse();
+							return;
+						}
+						else
+						{
+							// TODO
+						}
+						break;
+
 					// TODO
 					case "manifests":
 					// TODO
@@ -396,7 +442,7 @@ namespace TAG.Networking.DockerRegistry
 			}
 		}
 
-		private static void Prepare(string Resource, out string[] ResourceParts, out int Pos, out int Len, 
+		private static void Prepare(string Resource, out string[] ResourceParts, out int Pos, out int Len,
 			out string KeyResourceName, out string[] Names)
 		{
 			if (Resource == "/" || string.IsNullOrEmpty(Resource))  // API Version Check
@@ -492,6 +538,15 @@ namespace TAG.Networking.DockerRegistry
 		private void AddDigestHeader(HttpResponse Response, HashFunction HashFunction, byte[] Digest)
 		{
 			Response.SetHeader("Docker-Content-Digest", GetDigestString(HashFunction, Digest));
+		}
+
+		/// <summary>
+		/// Disposes of the resource.
+		/// </summary>
+		public void Dispose()
+		{
+			this.uploads.Clear();
+			this.uploads.Dispose();
 		}
 
 

@@ -14,12 +14,12 @@
 		/// <summary>
 		/// The blob upload encountered an error and can no longer proceed.
 		/// </summary>
-		BLOB_UPLOAD_INVALID,    // blob upload invalid 
+		BLOB_UPLOAD_INVALID,
 
 		/// <summary>
 		/// If a blob upload has been cancelled or was never started, this error code may be returned.
 		/// </summary>
-		BLOB_UPLOAD_UNKNOWN,    // blob upload unknown to registry 
+		BLOB_UPLOAD_UNKNOWN,
 
 		/// <summary>
 		/// When a blob is uploaded, the registry will check that the content matches the digest provided by the client. 

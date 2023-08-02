@@ -73,8 +73,12 @@ namespace TAG.Service.DockerRegistry
 		/// </summary>
 		public Task Stop()
 		{
-			Gateway.HttpServer?.Unregister(this.server);
-			this.server = null;
+			if (!(this.server is null))
+			{
+				Gateway.HttpServer?.Unregister(this.server);
+				this.server.Dispose();
+				this.server = null;
+			}
 	
 			return Task.CompletedTask;
 		}
