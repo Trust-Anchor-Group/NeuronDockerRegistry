@@ -11,7 +11,6 @@ using Waher.Networking.HTTP;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
 using Waher.Runtime.Cache;
-using Waher.Script.Abstraction.Elements;
 using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry
@@ -22,8 +21,8 @@ namespace TAG.Networking.DockerRegistry
 	/// Reference:
 	/// https://docs.docker.com/registry/spec/api/
 	/// </summary>
-	public class RegistryServerV2 : HttpSynchronousResource, IHttpGetMethod, IHttpPostMethod, IHttpDeleteMethod,
-		IHttpPatchMethod, IHttpPatchRangesMethod, IHttpPutMethod, IHttpPutRangesMethod, IDisposable
+	public class RegistryServerV2 : HttpSynchronousResource, IHttpGetMethod, IHttpGetRangesMethod, IHttpPostMethod,
+		IHttpDeleteMethod, IHttpPatchMethod, IHttpPatchRangesMethod, IHttpPutMethod, IHttpPutRangesMethod, IDisposable
 	{
 		private static readonly Regex regexName = new Regex("[a-z0-9]+(?:[._-][a-z0-9]+)*", RegexOptions.Compiled | RegexOptions.Singleline);
 		private static readonly string[] keyResourceNames = new string[]
@@ -117,7 +116,18 @@ namespace TAG.Networking.DockerRegistry
 		/// </summary>
 		/// <param name="Request">Request object.</param>
 		/// <param name="Response">Response object.</param>
-		public async Task GET(HttpRequest Request, HttpResponse Response)
+		public Task GET(HttpRequest Request, HttpResponse Response)
+		{
+			return this.GET(Request, Response, null);
+		}
+
+		/// <summary>
+		/// Executes a GET method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		/// <param name="Interval">Range interval.</param>
+		public async Task GET(HttpRequest Request, HttpResponse Response, ByteRangeInterval Interval)
 		{
 			try
 			{
@@ -177,12 +187,23 @@ namespace TAG.Networking.DockerRegistry
 								}
 								else
 								{
-									long Count = UploadRecord.File.Length;
+									long Offset = Interval?.First ?? 0L;
+									long Count;
+
+									if (Interval is null)
+										Count = Request.DataStream.Length;
+									else
+									{
+										long First = Interval.First ?? 0;
+										long Last = Interval.Last ?? Request.DataStream.Length - 1;
+
+										Count = Last - First + 1;
+									}
 
 									Response.StatusCode = 200;
-									Response.SetHeader("Range", "0-" + (Count - 1).ToString());
+									Response.SetHeader("Range", Offset.ToString() + "-" + (Offset + Count - 1).ToString());
 
-									UploadRecord.File.Position = 0;
+									UploadRecord.File.Position = Offset;
 
 									byte[] Buf = new byte[65536];
 									int NrBytes;
