@@ -1,8 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
-using System.Net.Security;
-using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -303,6 +301,9 @@ namespace TAG.Networking.DockerRegistry
 		{
 			try
 			{
+				if (!Request.User.HasPrivilege("Docker.Upload"))
+					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
 
 				switch (KeyResourceName)
@@ -314,9 +315,6 @@ namespace TAG.Networking.DockerRegistry
 						if (ResourceParts[Pos] == "uploads")
 						{
 							Pos++;
-
-							if (!Request.User.HasPrivilege("Docker.Upload"))
-								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
 
 							if (Pos == ResourceParts.Length || string.IsNullOrEmpty(ResourceParts[Pos]))
 							{
@@ -372,6 +370,9 @@ namespace TAG.Networking.DockerRegistry
 		{
 			try
 			{
+				if (!Request.User.HasPrivilege("Docker.Upload"))
+					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
 
 				switch (KeyResourceName)
@@ -383,9 +384,6 @@ namespace TAG.Networking.DockerRegistry
 						if (ResourceParts[Pos] == "uploads")
 						{
 							Pos++;
-
-							if (!Request.User.HasPrivilege("Docker.Upload"))
-								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
 
 							if (Pos == ResourceParts.Length ||
 								string.IsNullOrEmpty(ResourceParts[Pos]) ||
@@ -447,6 +445,9 @@ namespace TAG.Networking.DockerRegistry
 		{
 			try
 			{
+				if (!Request.User.HasPrivilege("Docker.Upload"))
+					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
 
 				switch (KeyResourceName)
@@ -458,9 +459,6 @@ namespace TAG.Networking.DockerRegistry
 						if (ResourceParts[Pos] == "uploads")
 						{
 							Pos++;
-
-							if (!Request.User.HasPrivilege("Docker.Upload"))
-								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
 
 							if (Pos == ResourceParts.Length ||
 								string.IsNullOrEmpty(ResourceParts[Pos]) ||
@@ -536,6 +534,9 @@ namespace TAG.Networking.DockerRegistry
 		{
 			try
 			{
+				if (!Request.User.HasPrivilege("Docker.Upload"))
+					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
 
 				switch (KeyResourceName)
@@ -544,12 +545,13 @@ namespace TAG.Networking.DockerRegistry
 						if (Pos >= ResourceParts.Length)
 							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
 
+						string DigestStr;
+						byte[] Digest;
+						HashFunction Function;
+
 						if (ResourceParts[Pos] == "uploads")
 						{
 							Pos++;
-
-							if (!Request.User.HasPrivilege("Docker.Upload"))
-								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
 
 							if (Pos == ResourceParts.Length ||
 								string.IsNullOrEmpty(ResourceParts[Pos]) ||
@@ -561,8 +563,6 @@ namespace TAG.Networking.DockerRegistry
 							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
 								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."));
 
-							string DigestStr;
-
 							await UploadRecord.Lock();
 							try
 							{
@@ -570,7 +570,7 @@ namespace TAG.Networking.DockerRegistry
 									await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid, Names);
 
 								if (!Request.Header.TryGetQueryParameter("digest", out DigestStr) ||
-									!TryParseDigest(HttpUtility.UrlDecode(DigestStr), out HashFunction Function, out byte[] Digest) ||
+									!TryParseDigest(DigestStr = HttpUtility.UrlDecode(DigestStr), out Function, out Digest) ||
 									Convert.ToBase64String(Digest) != Convert.ToBase64String(UploadRecord.ComputeDigestLocked(Function)))
 								{
 									throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
@@ -612,14 +612,146 @@ namespace TAG.Networking.DockerRegistry
 							await Response.SendResponse();
 							return;
 						}
-						else
-						{
-							// TODO
-						}
 						break;
 
 					case "manifests":
-					// TODO
+						if (Pos >= ResourceParts.Length)
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL incomplete."));
+
+						string Reference = ResourceParts[Pos++];
+						object Manifest = await Request.DecodeDataAsync();
+						string ImageName = JoinNames(Names);
+						string Tag = null;
+
+						if (!(Manifest is Dictionary<string, object> ManifestObj))
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Unrecognized content."));
+
+						if (ManifestObj.TryGetValue("name", out object Obj))
+						{
+							if (!(Obj is string ManifestName) || ImageName != ManifestName)
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL name mismatch."));
+						}
+
+						if (ManifestObj.TryGetValue("layers", out Obj) && Obj is Array Layers)
+						{
+							int i, c = Layers.Length;
+
+							for (i = 0; i < c; i++)
+							{
+								if (Layers.GetValue(i) is Dictionary<string, object> LayerObj &&
+									LayerObj.TryGetValue("digest", out Obj) &&
+									Obj is string LayerDigestStr &&
+									TryParseDigest(LayerDigestStr, out HashFunction LayerFunction, out byte[] LayerDigest))
+								{
+									DockerBlob Layer = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
+										new FilterFieldEqualTo("Digest", LayerDigest),
+										new FilterFieldEqualTo("Function", LayerFunction)))
+										?? throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN,
+										"BLOB unknown to registry.", new Dictionary<string, object>()
+										{
+											{ "digest", LayerDigestStr }
+										}));
+								}
+								else
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Invalid layer."));
+							}
+						}
+						else
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing layers."));
+
+						if (TryParseDigest(Reference, out Function, out Digest))
+						{
+							if (ManifestObj.TryGetValue("config", out Obj) &&
+								Obj is Dictionary<string, object> Config &&
+								Config.TryGetValue("digest", out Obj))
+							{
+								if ((DigestStr = Obj as string) is null ||
+									!TryParseDigest(DigestStr, out HashFunction Function2, out byte[] Digest2))
+								{
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing digest in config."));
+								}
+
+								if (Function != Function2 || Convert.ToBase64String(Digest) != Convert.ToBase64String(Digest2))
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Digest mismatch."));
+							}
+						}
+						else
+						{
+							Tag = Reference;
+
+							if (ManifestObj.TryGetValue("config", out Obj) && Obj is Dictionary<string, object> Config)
+							{
+								if (!Config.TryGetValue("digest", out Obj) ||
+									(DigestStr = Obj as string) is null ||
+									!TryParseDigest(DigestStr, out Function, out Digest))
+								{
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing digest in config."));
+								}
+							}
+							else
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing config."));
+						}
+
+						if (Pos == ResourceParts.Length)
+						{
+							DockerImage Image;
+
+							if (string.IsNullOrEmpty(Tag))
+							{
+								Image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
+									new FilterFieldEqualTo("Image", ImageName),
+									new FilterFieldEqualTo("Digest", Digest),
+									new FilterFieldEqualTo("Function", Function)));
+
+								if (!(Image is null))
+									Tag = Image.Tag;
+								else
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing tag."));
+							}
+							else
+							{
+								Image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
+									new FilterFieldEqualTo("Image", ImageName),
+									new FilterFieldEqualTo("Tag", Tag)));
+							}
+
+							if (Image is null)
+							{
+								Image = new DockerImage()
+								{
+									AccountName = Request.User.UserName,
+									Image = ImageName,
+									Tag = Tag,
+									Manifest = Manifest,
+									Digest = Digest,
+									Function = Function
+								};
+
+								await Database.Insert(Image);
+							}
+							else if (Image.AccountName != Request.User.UserName)
+								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+							else
+							{
+								if (string.IsNullOrEmpty(Tag))
+									Tag = Image.Tag;
+								else
+									Image.Tag = Tag;
+
+								Image.Manifest = Manifest;
+								Image.Digest = Digest;
+								Image.Function = Function;
+
+								await Database.Update(Image);
+							}
+
+							Response.StatusCode = 201;
+							Response.StatusMessage = "Created";
+							await Response.SendResponse();
+							return;
+						}
+						break;
+
 					case "_catalog":
 					// TODO
 					case "tags":

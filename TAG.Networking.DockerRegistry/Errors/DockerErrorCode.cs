@@ -37,7 +37,7 @@
 		/// During upload, manifests undergo several checks ensuring validity. If those checks fail, this error may be 
 		/// returned, unless a more specific error is included. The detail will contain information the failed validation.
 		/// </summary>
-		MANIFEST_INVALID,       // manifest invalid    
+		MANIFEST_INVALID,
 
 		/// <summary>
 		/// This error is returned when the manifest, identified by name and tag is unknown to the repository.
