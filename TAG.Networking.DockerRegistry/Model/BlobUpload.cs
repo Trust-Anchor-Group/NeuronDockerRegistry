@@ -39,6 +39,11 @@ namespace TAG.Networking.DockerRegistry.Model
 		public FileStream File { get; set; }
 
 		/// <summary>
+		/// Name of upload file.
+		/// </summary>
+		public string FileName { get; set; }
+
+		/// <summary>
 		/// Locks the upload record.
 		/// </summary>
 		public async Task Lock()
@@ -107,8 +112,8 @@ namespace TAG.Networking.DockerRegistry.Model
 				this.File?.Dispose();
 				this.File = null;
 
-                if (System.IO.File.Exists(this.Blob.FileName))
-					System.IO.File.Delete(this.Blob.FileName);
+                if (System.IO.File.Exists(this.FileName))
+					System.IO.File.Delete(this.FileName);
             }
 			catch (Exception ex)
 			{

@@ -1,6 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Net.Security;
+using System.Runtime.InteropServices.ComTypes;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -183,7 +185,7 @@ namespace TAG.Networking.DockerRegistry
 								{
 									Response.StatusCode = 204;
 									Response.StatusMessage = "No Content";
-									Response.SetHeader("Range", "0-0");
+									Response.SetHeader("Content-Range", "0-0/0");
 								}
 								else
 								{
@@ -191,32 +193,18 @@ namespace TAG.Networking.DockerRegistry
 									long Count;
 
 									if (Interval is null)
-										Count = Request.DataStream.Length;
+										Count = UploadRecord.File.Length;
 									else
 									{
-										long First = Interval.First ?? 0;
-										long Last = Interval.Last ?? Request.DataStream.Length - 1;
-
-										Count = Last - First + 1;
+										long Last = Interval.Last ?? UploadRecord.File.Length - 1;
+										Count = Last - Offset + 1;
 									}
 
 									Response.StatusCode = 200;
-									Response.SetHeader("Range", Offset.ToString() + "-" + (Offset + Count - 1).ToString());
+									Response.SetHeader("Content-Range", Offset.ToString() + "-" +
+										(Offset + Count - 1).ToString() + "/" + UploadRecord.File.Length.ToString());
 
-									UploadRecord.File.Position = Offset;
-
-									byte[] Buf = new byte[65536];
-									int NrBytes;
-
-									while (Count > 0)
-									{
-										NrBytes = (int)Math.Min(65536, Count);
-
-										await UploadRecord.File.ReadAsync(Buf, 0, NrBytes);
-										await Response.Write(Buf, 0, NrBytes);
-
-										Count -= NrBytes;
-									}
+									await WriteToResponse(Response, UploadRecord.File, Offset, Count);
 								}
 							}
 							finally
@@ -237,9 +225,35 @@ namespace TAG.Networking.DockerRegistry
 								new FilterFieldEqualTo("Function", Function)))
 								?? throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."));
 
-							// TODO
+							if (!File.Exists(Blob.FileName))
+								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."));
+
+							if (!Request.User.HasPrivilege("Docker.Download"))
+								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+
+							using (FileStream BlobFile = File.OpenRead(Blob.FileName))
+							{
+								long Offset = Interval?.First ?? 0L;
+								long Count;
+
+								if (Interval is null)
+									Count = BlobFile.Length;
+								else
+								{
+									long Last = Interval.Last ?? BlobFile.Length - 1;
+									Count = Last - Offset + 1;
+								}
+
+								Response.StatusCode = 200;
+								Response.SetHeader("Content-Range", Offset.ToString() + "-" +
+									(Offset + Count - 1).ToString() + "/" + BlobFile.Length.ToString());
+
+								await WriteToResponse(Response, BlobFile, Offset, Count);
+							}
+
+							await Response.SendResponse();
+							return;
 						}
-						break;
 
 					case "manifests":
 					// TODO
@@ -256,6 +270,27 @@ namespace TAG.Networking.DockerRegistry
 			catch (Exception ex)
 			{
 				await Response.SendResponse(ex);
+			}
+		}
+
+		private static async Task WriteToResponse(HttpResponse Response, FileStream File, long Offset, long Count)
+		{
+			if (!Response.OnlyHeader)
+			{
+				File.Position = Offset;
+
+				byte[] Buf = new byte[65536];
+				int NrBytes;
+
+				while (Count > 0)
+				{
+					NrBytes = (int)Math.Min(65536, Count);
+
+					await File.ReadAsync(Buf, 0, NrBytes);
+					await Response.Write(Buf, 0, NrBytes);
+
+					Count -= NrBytes;
+				}
 			}
 		}
 
@@ -441,7 +476,7 @@ namespace TAG.Networking.DockerRegistry
 							await UploadRecord.Lock();
 							try
 							{
-								await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid);
+								await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid, Names);
 
 								Response.StatusCode = 202;
 								Response.StatusMessage = "Accepted";
@@ -532,7 +567,7 @@ namespace TAG.Networking.DockerRegistry
 							try
 							{
 								if (Request.HasData)
-									await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid);
+									await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid, Names);
 
 								if (!Request.Header.TryGetQueryParameter("digest", out DigestStr) ||
 									!TryParseDigest(HttpUtility.UrlDecode(DigestStr), out HashFunction Function, out byte[] Digest) ||
@@ -541,9 +576,17 @@ namespace TAG.Networking.DockerRegistry
 									throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
 								}
 
-								string ContentFolder = Path.Combine(this.BlobFolder, Hashes.BinaryToString(Digest) + ".bin");
 
-								using (FileStream Content = File.Create(ContentFolder))
+								string ContentFileName = Path.Combine(this.BlobFolder, Hashes.BinaryToString(Digest) + ".bin");
+
+								DockerBlob Prev = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
+									new FilterFieldEqualTo("Digest", Digest),
+									new FilterFieldEqualTo("Function", Function)));
+
+								if (File.Exists(ContentFileName) || !(Prev is null))
+									throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "BLOB already exists."));
+
+								using (FileStream Content = File.Create(ContentFileName))
 								{
 									UploadRecord.File.Position = 0;
 									await UploadRecord.File.CopyToAsync(Content);
@@ -551,8 +594,9 @@ namespace TAG.Networking.DockerRegistry
 
 								UploadRecord.Blob.Function = Function;
 								UploadRecord.Blob.Digest = Digest;
+								UploadRecord.Blob.FileName = ContentFileName;
 
-								await Database.Update(UploadRecord.Blob);
+								await Database.Insert(UploadRecord.Blob);
 							}
 							finally
 							{
@@ -624,7 +668,7 @@ namespace TAG.Networking.DockerRegistry
 			}
 		}
 
-		private async Task CopyToBlobLocked(HttpRequest Request, ContentByteRangeInterval Interval, BlobUpload UploadRecord, Guid Uuid)
+		private async Task CopyToBlobLocked(HttpRequest Request, ContentByteRangeInterval Interval, BlobUpload UploadRecord, Guid Uuid, string[] Names)
 		{
 			Request.DataStream.Position = 0;
 
@@ -636,15 +680,15 @@ namespace TAG.Networking.DockerRegistry
 				UploadRecord.Blob = new DockerBlob()
 				{
 					AccountName = Request.User.UserName,
-					FileName = Path.Combine(this.UploadFolder, Uuid.ToString() + ".bin")
+					Image = JoinNames(Names)
 				};
 
-				if (File.Exists(UploadRecord.Blob.FileName))
-					UploadRecord.File = File.OpenWrite(UploadRecord.Blob.FileName);
-				else
-					UploadRecord.File = File.Create(UploadRecord.Blob.FileName);
+				UploadRecord.FileName = Path.Combine(this.UploadFolder, Uuid.ToString() + ".bin");
 
-				await Database.Insert(UploadRecord.Blob);
+				if (File.Exists(UploadRecord.FileName))
+					UploadRecord.File = File.OpenWrite(UploadRecord.FileName);
+				else
+					UploadRecord.File = File.Create(UploadRecord.FileName);
 			}
 
 			if (UploadRecord.File.Length < Offset)
@@ -694,6 +738,24 @@ namespace TAG.Networking.DockerRegistry
 			foreach (string Name in Names)
 			{
 				sb.Append('/');
+				sb.Append(Name);
+			}
+
+			return sb.ToString();
+		}
+
+		private static string JoinNames(string[] Names)
+		{
+			StringBuilder sb = new StringBuilder();
+			bool First = true;
+
+			foreach (string Name in Names)
+			{
+				if (First)
+					First = false;
+				else
+					sb.Append('/');
+
 				sb.Append(Name);
 			}
 
