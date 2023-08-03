@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -9,6 +10,7 @@ using Waher.Networking.HTTP;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
 using Waher.Runtime.Cache;
+using Waher.Script.Abstraction.Elements;
 using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry
@@ -19,7 +21,7 @@ namespace TAG.Networking.DockerRegistry
 	/// Reference:
 	/// https://docs.docker.com/registry/spec/api/
 	/// </summary>
-	public class RegistryServerV2 : HttpAsynchronousResource, IHttpGetMethod, IHttpPostMethod, IHttpDeleteMethod,
+	public class RegistryServerV2 : HttpSynchronousResource, IHttpGetMethod, IHttpPostMethod, IHttpDeleteMethod,
 		IHttpPatchMethod, IHttpPatchRangesMethod, IHttpPutMethod, IHttpPutRangesMethod, IDisposable
 	{
 		private static readonly Regex regexName = new Regex("[a-z0-9]+(?:[._-][a-z0-9]+)*", RegexOptions.Compiled | RegexOptions.Singleline);
@@ -33,14 +35,17 @@ namespace TAG.Networking.DockerRegistry
 
 		private readonly HttpAuthenticationScheme[] authenticationSchemes;
 		private readonly Cache<Guid, BlobUpload> uploads = new Cache<Guid, BlobUpload>(int.MaxValue, TimeSpan.MaxValue, TimeSpan.FromHours(1));
+		private readonly string dockerRegistryFolder;
 
 		/// <summary>
 		/// Docker Registry API v2.
 		/// </summary>
+		/// <param name="DockerRegistryFolder">Docker Registry folder.</param>
 		/// <param name="AuthenticationSchemes">Authentication schemes.</param>
-		public RegistryServerV2(params HttpAuthenticationScheme[] AuthenticationSchemes)
+		public RegistryServerV2(string DockerRegistryFolder, params HttpAuthenticationScheme[] AuthenticationSchemes)
 			: base("/v2")
 		{
+			this.dockerRegistryFolder = DockerRegistryFolder;
 			this.authenticationSchemes = AuthenticationSchemes;
 			this.uploads.Removed += this.Uploads_Removed;
 		}
@@ -111,81 +116,7 @@ namespace TAG.Networking.DockerRegistry
 		/// </summary>
 		/// <param name="Request">Request object.</param>
 		/// <param name="Response">Response object.</param>
-		public Task GET(HttpRequest Request, HttpResponse Response)
-		{
-			this.ProcessGet(Request, Response);
-			return Task.CompletedTask;
-		}
-
-		/// <summary>
-		/// Executes a POST method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		public Task POST(HttpRequest Request, HttpResponse Response)
-		{
-			this.ProcessPost(Request, Response);
-			return Task.CompletedTask;
-		}
-
-		/// <summary>
-		/// Executes a DELETE method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		public Task DELETE(HttpRequest Request, HttpResponse Response)
-		{
-			this.ProcessDelete(Request, Response);
-			return Task.CompletedTask;
-		}
-
-		/// <summary>
-		/// Executes a PATCH method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		public Task PATCH(HttpRequest Request, HttpResponse Response)
-		{
-			this.ProcessPatch(Request, Response, null);
-			return Task.CompletedTask;
-		}
-
-		/// <summary>
-		/// Executes a PATCH method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		/// <param name="Interval">Range interval.</param>
-		public Task PATCH(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
-		{
-			this.ProcessPatch(Request, Response, Interval);
-			return Task.CompletedTask;
-		}
-
-		/// <summary>
-		/// Executes a PUT method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		public Task PUT(HttpRequest Request, HttpResponse Response)
-		{
-			this.ProcessPut(Request, Response, null);
-			return Task.CompletedTask;
-		}
-
-		/// <summary>
-		/// Executes a PUT method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		/// <param name="Interval">Range interval.</param>
-		public Task PUT(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
-		{
-			this.ProcessPut(Request, Response, Interval);
-			return Task.CompletedTask;
-		}
-
-		private async void ProcessGet(HttpRequest Request, HttpResponse Response)
+		public async Task GET(HttpRequest Request, HttpResponse Response)
 		{
 			try
 			{
@@ -218,7 +149,61 @@ namespace TAG.Networking.DockerRegistry
 						{
 							Pos++;
 
-							// TODO
+							if (!Request.User.HasPrivilege("Docker.Upload"))
+								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+
+							if (Pos == ResourceParts.Length ||
+								string.IsNullOrEmpty(ResourceParts[Pos]) ||
+								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid))
+							{
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+							}
+
+							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
+								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."));
+
+							await UploadRecord.Lock();
+							try
+							{
+								Response.SetHeader("Location", NameUrl(Names) + "/blobs/uploads/" + Uuid.ToString());
+								Response.SetHeader("Docker-Upload-UUID", Uuid.ToString());
+
+								if (UploadRecord.File is null || UploadRecord.File.Length == 0)
+								{
+									Response.StatusCode = 204;
+									Response.StatusMessage = "No Content";
+									Response.SetHeader("Range", "0-0");
+								}
+								else
+								{
+									long Count = UploadRecord.File.Length;
+
+									Response.StatusCode = 200;
+									Response.SetHeader("Range", "0-" + (Count - 1).ToString());
+
+									UploadRecord.File.Position = 0;
+
+									byte[] Buf = new byte[65536];
+									int NrBytes;
+
+									while (Count > 0)
+									{
+										NrBytes = (int)Math.Min(65536, Count);
+
+										await UploadRecord.File.ReadAsync(Buf, 0, NrBytes);
+										await Response.Write(Buf, 0, NrBytes);
+
+										Count -= NrBytes;
+									}
+								}
+							}
+							finally
+							{
+								UploadRecord.Release();
+							}
+
+							await Response.SendResponse();
+							return;
 						}
 						else
 						{
@@ -252,7 +237,12 @@ namespace TAG.Networking.DockerRegistry
 			}
 		}
 
-		private async void ProcessPost(HttpRequest Request, HttpResponse Response)
+		/// <summary>
+		/// Executes a POST method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		public async Task POST(HttpRequest Request, HttpResponse Response)
 		{
 			try
 			{
@@ -267,6 +257,9 @@ namespace TAG.Networking.DockerRegistry
 						if (ResourceParts[Pos] == "uploads")
 						{
 							Pos++;
+
+							if (!Request.User.HasPrivilege("Docker.Upload"))
+								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
 
 							if (Pos == ResourceParts.Length || string.IsNullOrEmpty(ResourceParts[Pos]))
 							{
@@ -291,14 +284,6 @@ namespace TAG.Networking.DockerRegistry
 						}
 						else
 						{
-							if (!TryGetDigest(ResourceParts, out HashFunction Function, out byte[] Digest, ref Pos))
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
-
-							DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
-								new FilterFieldEqualTo("Digest", Digest),
-								new FilterFieldEqualTo("Function", Function)))
-								?? throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."));
-
 							// TODO
 						}
 						break;
@@ -321,7 +306,12 @@ namespace TAG.Networking.DockerRegistry
 			}
 		}
 
-		private async void ProcessPatch(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
+		/// <summary>
+		/// Executes a DELETE method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		public async Task DELETE(HttpRequest Request, HttpResponse Response)
 		{
 			try
 			{
@@ -331,11 +321,89 @@ namespace TAG.Networking.DockerRegistry
 				{
 					case "blobs":
 						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
 
 						if (ResourceParts[Pos] == "uploads")
 						{
 							Pos++;
+
+							if (!Request.User.HasPrivilege("Docker.Upload"))
+								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+
+							if (Pos == ResourceParts.Length ||
+								string.IsNullOrEmpty(ResourceParts[Pos]) ||
+								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid))
+							{
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+							}
+
+							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
+								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."));
+
+							this.uploads.Remove(Uuid);
+
+							Response.StatusCode = 200;
+							await Response.SendResponse();
+							return;
+						}
+						else
+						{
+							// TODO
+						}
+						break;
+
+					case "manifests":
+					// TODO
+					case "_catalog":
+					// TODO
+					case "tags":
+					// TODO
+					default:
+						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				}
+
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+			}
+			catch (Exception ex)
+			{
+				await Response.SendResponse(ex);
+			}
+		}
+
+		/// <summary>
+		/// Executes a PATCH method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		public Task PATCH(HttpRequest Request, HttpResponse Response)
+		{
+			return this.PATCH(Request, Response, null);
+		}
+
+		/// <summary>
+		/// Executes a PATCH method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		/// <param name="Interval">Range interval.</param>
+		public async Task PATCH(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
+		{
+			try
+			{
+				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
+
+				switch (KeyResourceName)
+				{
+					case "blobs":
+						if (Pos >= ResourceParts.Length)
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+
+						if (ResourceParts[Pos] == "uploads")
+						{
+							Pos++;
+
+							if (!Request.User.HasPrivilege("Docker.Upload"))
+								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
 
 							if (Pos == ResourceParts.Length ||
 								string.IsNullOrEmpty(ResourceParts[Pos]) ||
@@ -346,12 +414,17 @@ namespace TAG.Networking.DockerRegistry
 							}
 
 							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."));
+								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."));
 
-							Request.DataStream.Position = 0;
-
-							long Offset = Interval?.First ?? 0L;
-							long Count = Interval is null ? Request.DataStream.Length : Interval.Last - Interval.First + 1;
+							await UploadRecord.Lock();
+							try
+							{
+								await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid);
+							}
+							finally
+							{
+								UploadRecord.Release();
+							}
 
 							Response.StatusCode = 202;
 							Response.StatusMessage = "Accepted";
@@ -386,7 +459,23 @@ namespace TAG.Networking.DockerRegistry
 			}
 		}
 
-		private async void ProcessPut(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
+		/// <summary>
+		/// Executes a PUT method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		public Task PUT(HttpRequest Request, HttpResponse Response)
+		{
+			return this.PUT(Request, Response, null);
+		}
+
+		/// <summary>
+		/// Executes a PUT method.
+		/// </summary>
+		/// <param name="Request">Request object.</param>
+		/// <param name="Response">Response object.</param>
+		/// <param name="Interval">Range interval.</param>
+		public async Task PUT(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
 		{
 			try
 			{
@@ -395,7 +484,75 @@ namespace TAG.Networking.DockerRegistry
 				switch (KeyResourceName)
 				{
 					case "blobs":
-					// TODO
+						if (Pos >= ResourceParts.Length)
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+
+						if (ResourceParts[Pos] == "uploads")
+						{
+							Pos++;
+
+							if (!Request.User.HasPrivilege("Docker.Upload"))
+								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+
+							if (Pos == ResourceParts.Length ||
+								string.IsNullOrEmpty(ResourceParts[Pos]) ||
+								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid) ||
+								!Request.HasData)
+							{
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+							}
+
+							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
+								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."));
+
+							string DigestStr;
+
+							await UploadRecord.Lock();
+							try
+							{
+								if (Request.HasData)
+									await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid);
+
+								if (!Request.Header.TryGetQueryParameter("digest", out DigestStr) ||
+									!TryParseDigest(DigestStr, out HashFunction Function, out byte[] Digest) ||
+									Convert.ToBase64String(Digest) != Convert.ToBase64String(UploadRecord.ComputeDigestLocked(Function)))
+								{
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
+								}
+
+								string ContentFolder = Path.Combine(this.BlobFolder, Hashes.BinaryToString(Digest) + ".bin");
+
+								using (FileStream Content = File.Create(ContentFolder))
+								{
+									UploadRecord.File.Position = 0;
+									await UploadRecord.File.CopyToAsync(Content);
+								}
+
+								UploadRecord.Blob.Function = Function;
+								UploadRecord.Blob.Digest = Digest;
+
+								await Database.Update(UploadRecord.Blob);
+							}
+							finally
+							{
+								UploadRecord.Release();
+							}
+
+							this.uploads.Remove(Uuid);
+
+							Response.StatusCode = 201;
+							Response.StatusMessage = "Created";
+							Response.SetHeader("Location", NameUrl(Names) + "/blobs/" + DigestStr);
+							Response.SetHeader("Docker-Content-Digest", DigestStr);
+							await Response.SendResponse();
+							return;
+						}
+						else
+						{
+							// TODO
+						}
+						break;
+
 					case "manifests":
 					// TODO
 					case "_catalog":
@@ -414,31 +571,81 @@ namespace TAG.Networking.DockerRegistry
 			}
 		}
 
-		private async void ProcessDelete(HttpRequest Request, HttpResponse Response)
+		/// <summary>
+		/// Folder where BLOBs are uploaded to.
+		/// </summary>
+		public string UploadFolder
 		{
-			try
+			get
 			{
-				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
+				string UploadFolder = Path.Combine(this.dockerRegistryFolder, "Uploads");
 
-				switch (KeyResourceName)
-				{
-					case "blobs":
-					// TODO
-					case "manifests":
-					// TODO
-					case "_catalog":
-					// TODO
-					case "tags":
-					// TODO
-					default:
-						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
-				}
+				if (!Directory.Exists(UploadFolder))
+					Directory.CreateDirectory(UploadFolder);
 
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				return UploadFolder;
 			}
-			catch (Exception ex)
+		}
+
+		/// <summary>
+		/// Folder where validated uploaded BLOBs are stored.
+		/// </summary>
+		public string BlobFolder
+		{
+			get
 			{
-				await Response.SendResponse(ex);
+				string BlobFolder = Path.Combine(this.dockerRegistryFolder, "BLOBs");
+
+				if (!Directory.Exists(BlobFolder))
+					Directory.CreateDirectory(BlobFolder);
+
+				return BlobFolder;
+			}
+		}
+
+		private async Task CopyToBlobLocked(HttpRequest Request, ContentByteRangeInterval Interval, BlobUpload UploadRecord, Guid Uuid)
+		{
+			Request.DataStream.Position = 0;
+
+			long Offset = Interval?.First ?? 0L;
+			long Count = Interval is null ? Request.DataStream.Length : Interval.Last - Interval.First + 1;
+
+			if (UploadRecord.Blob is null)
+			{
+				UploadRecord.Blob = new DockerBlob()
+				{
+					AccountName = Request.User.UserName,
+					FileName = Path.Combine(this.UploadFolder, Uuid.ToString() + ".bin")
+				};
+
+				if (File.Exists(UploadRecord.Blob.FileName))
+					UploadRecord.File = File.OpenWrite(UploadRecord.Blob.FileName);
+				else
+					UploadRecord.File = File.Create(UploadRecord.Blob.FileName);
+
+				await Database.Insert(UploadRecord.Blob);
+			}
+
+			if (UploadRecord.File.Length < Offset)
+			{
+				byte[] Buf = new byte[65536];
+
+				UploadRecord.File.Position = UploadRecord.File.Length;
+
+				while (UploadRecord.File.Length < Offset)
+				{
+					int NrBytes = (int)Math.Min(65536, Offset - UploadRecord.File.Length);
+					await UploadRecord.File.WriteAsync(Buf, 0, NrBytes);
+				}
+			}
+			else
+				UploadRecord.File.Position = Offset;
+
+			while (Count > 0)
+			{
+				int NrBytes = (int)Math.Min(65536, Count);
+				await Request.DataStream.CopyToAsync(UploadRecord.File, NrBytes);
+				Count -= NrBytes;
 			}
 		}
 
@@ -474,13 +681,21 @@ namespace TAG.Networking.DockerRegistry
 
 		private static bool TryGetDigest(string[] Parts, out HashFunction Function, out byte[] Digest, ref int Pos)
 		{
+			if (Pos != Parts.Length - 1)
+			{
+				Function = default;
+				Digest = null;
+				return false;
+			}
+			else
+				return TryParseDigest(Parts[Pos++], out Function, out Digest);
+		}
+
+		private static bool TryParseDigest(string s, out HashFunction Function, out byte[] Digest)
+		{
 			Function = default;
 			Digest = null;
 
-			if (Pos != Parts.Length - 1)
-				return false;
-
-			string s = Parts[Pos++];
 			int i = s.IndexOf(':');
 			if (i < 0)
 				return false;
@@ -535,11 +750,6 @@ namespace TAG.Networking.DockerRegistry
 			return HashFunction.ToString().ToLower() + ":" + Hashes.BinaryToString(Digest);
 		}
 
-		private void AddDigestHeader(HttpResponse Response, HashFunction HashFunction, byte[] Digest)
-		{
-			Response.SetHeader("Docker-Content-Digest", GetDigestString(HashFunction, Digest));
-		}
-
 		/// <summary>
 		/// Disposes of the resource.
 		/// </summary>
@@ -549,9 +759,19 @@ namespace TAG.Networking.DockerRegistry
 			this.uploads.Dispose();
 		}
 
-
-		// TODO:
-		// - 429 rate limit error in Networking.HTTP: Customize payload.
-		// - 401 Unauthorized error in Networking.HTTP: Customize payload.
+		/// <summary>
+		/// Returns Docker Registry error content for common HTTP error codes (if not provided by resource).
+		/// </summary>
+		/// <param name="StatusCode">HTTP Status code to return.</param>
+		/// <returns>Custom content, or null if none.</returns>
+		public override Task<object> DefaultErrorContent(int StatusCode)
+		{
+			switch (StatusCode)
+			{
+				case 429: return Task.FromResult<object>(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied due to rate limitations."));
+				case 401: return Task.FromResult<object>(new DockerErrors(DockerErrorCode.UNAUTHORIZED, "Authentication required."));
+				default: return base.DefaultErrorContent(StatusCode);
+			}
+		}
 	}
 }

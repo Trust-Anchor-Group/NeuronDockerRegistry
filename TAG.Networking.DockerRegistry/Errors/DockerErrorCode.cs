@@ -85,12 +85,12 @@
 		/// The access controller was unable to authenticate the client. Often this will be accompanied by a Www-Authenticate 
 		/// HTTP response header indicating how to authenticate.
 		/// </summary>
-		UNAUTHORIZED,           // authentication required 
+		UNAUTHORIZED, 
 
 		/// <summary>
 		/// The access controller denied access for the operation on a resource.
 		/// </summary>
-		DENIED,                 // requested access to the resource is denied  
+		DENIED,  
 
 		/// <summary>
 		/// The operation was unsupported due to a missing implementation or invalid set of parameters.

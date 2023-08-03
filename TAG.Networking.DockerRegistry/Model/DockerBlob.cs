@@ -22,6 +22,7 @@ namespace TAG.Networking.DockerRegistry.Model
 		/// <summary>
 		/// Object ID
 		/// </summary>
+		[ObjectId]
 		public string ObjectId { get; set; }
 
 		/// <summary>

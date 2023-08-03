@@ -10,6 +10,7 @@ using Waher.Runtime.Inventory;
 using Waher.Security.JWT;
 using Waher.Security.Users;
 using Waher.IoTGateway.Setup;
+using System.IO;
 
 namespace TAG.Service.DockerRegistry
 {
@@ -62,7 +63,7 @@ namespace TAG.Service.DockerRegistry
 			Schemes.Add(new DigestAuthentication(RequireEncryption, MinSecurityStrength, DigestAlgorithm.SHA256, Gateway.Domain, Users.Source));
 			Schemes.Add(new DigestAuthentication(RequireEncryption, MinSecurityStrength, DigestAlgorithm.SHA3_256, Gateway.Domain, Users.Source));
 
-			this.server = new RegistryServerV2(Schemes.ToArray());
+			this.server = new RegistryServerV2(Path.Combine(Gateway.AppDataFolder, "DockerRegistry"), Schemes.ToArray());
 			Gateway.HttpServer?.Register(this.server);
 
 			return Task.CompletedTask;
@@ -79,7 +80,7 @@ namespace TAG.Service.DockerRegistry
 				this.server.Dispose();
 				this.server = null;
 			}
-	
+
 			return Task.CompletedTask;
 		}
 	}
