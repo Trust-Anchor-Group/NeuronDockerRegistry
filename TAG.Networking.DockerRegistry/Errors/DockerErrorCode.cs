@@ -62,7 +62,7 @@
 		/// <summary>
 		/// Returned when the “n” parameter (number of results to return) is not an integer, or “n” is negative.
 		/// </summary>
-		PAGINATION_NUMBER_INVALID,  // invalid number of results requested 
+		PAGINATION_NUMBER_INVALID,
 
 		/// <summary>
 		/// When a layer is uploaded, the provided range is checked against the uploaded chunk. This error is returned if the 

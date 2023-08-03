@@ -7,10 +7,13 @@ using System.Threading.Tasks;
 using System.Web;
 using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
+using Waher.IoTGateway;
 using Waher.Networking.HTTP;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
 using Waher.Runtime.Cache;
+using Waher.Script;
+using Waher.Script.Functions.Vectors;
 using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry
@@ -253,9 +256,64 @@ namespace TAG.Networking.DockerRegistry
 							return;
 						}
 
-					case "manifests":
-					// TODO
 					case "_catalog":
+						object Result;
+
+						if (Request.Header.TryGetQueryParameter("n", out string NStr))
+						{
+							if (!int.TryParse(NStr, out int N) || N < 0)
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid number of results requested."));
+
+							if (Request.Header.TryGetQueryParameter("last", out string Last))
+							{
+								Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages' where Image>Last",
+									new Variables()
+									{
+										["Last"] = Last,
+										["N"] = N
+									});
+							}
+							else
+							{
+								Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages'",
+									new Variables()
+									{
+										["N"] = N
+									});
+							}
+
+							if (Result is Array A)
+							{
+								int i = A.Length;
+								if (i > 0)
+								{
+									object LastItem = A.GetValue(i - 1);
+									Response.SetHeader("Link", Gateway.GetUrl("/v2/_catalog?n=" + NStr + "&last=" + LastItem.ToString() + "; rel=\"next\""));
+								}
+							}
+						}
+						else
+						{
+							if (Request.Header.TryGetQueryParameter("last", out string Last))
+							{
+								Result = await Expression.EvalAsync("select distinct Image from 'DockerImages' where Image>Last",
+									new Variables()
+									{
+										["Last"] = Last
+									});
+							}
+							else
+								Result = await Expression.EvalAsync("select distinct Image from 'DockerImages'");
+						}
+
+						Response.StatusCode = 200;
+						await Response.Return(new Dictionary<string, object>()
+						{
+							{ "repositories", Result }
+						});
+						break;
+
+					case "manifests":
 					// TODO
 					case "tags":
 					// TODO
