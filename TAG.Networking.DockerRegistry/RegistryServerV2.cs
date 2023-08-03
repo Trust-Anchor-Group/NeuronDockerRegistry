@@ -4,6 +4,7 @@ using System.IO;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
+using System.Web;
 using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
 using Waher.Networking.HTTP;
@@ -496,8 +497,7 @@ namespace TAG.Networking.DockerRegistry
 
 							if (Pos == ResourceParts.Length ||
 								string.IsNullOrEmpty(ResourceParts[Pos]) ||
-								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid) ||
-								!Request.HasData)
+								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid))
 							{
 								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
 							}
@@ -514,7 +514,7 @@ namespace TAG.Networking.DockerRegistry
 									await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid);
 
 								if (!Request.Header.TryGetQueryParameter("digest", out DigestStr) ||
-									!TryParseDigest(DigestStr, out HashFunction Function, out byte[] Digest) ||
+									!TryParseDigest(HttpUtility.UrlDecode(DigestStr), out HashFunction Function, out byte[] Digest) ||
 									Convert.ToBase64String(Digest) != Convert.ToBase64String(UploadRecord.ComputeDigestLocked(Function)))
 								{
 									throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
@@ -688,7 +688,7 @@ namespace TAG.Networking.DockerRegistry
 				return false;
 			}
 			else
-				return TryParseDigest(Parts[Pos++], out Function, out Digest);
+				return TryParseDigest(HttpUtility.UrlDecode(Parts[Pos++]), out Function, out Digest);
 		}
 
 		private static bool TryParseDigest(string s, out HashFunction Function, out byte[] Digest)
