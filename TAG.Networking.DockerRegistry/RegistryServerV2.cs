@@ -259,49 +259,19 @@ namespace TAG.Networking.DockerRegistry
 					case "_catalog":
 						object Result;
 
-						if (Request.Header.TryGetQueryParameter("n", out string NStr))
+						if (IsPaginated(Request, out bool HasLast, out Variables Pagination))
 						{
-							if (!int.TryParse(NStr, out int N) || N < 0)
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid number of results requested."));
-
-							if (Request.Header.TryGetQueryParameter("last", out string Last))
-							{
-								Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages' where Image>Last",
-									new Variables()
-									{
-										["Last"] = Last,
-										["N"] = N
-									});
-							}
+							if (HasLast)
+								Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages' where Image>Last", Pagination);
 							else
-							{
-								Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages'",
-									new Variables()
-									{
-										["N"] = N
-									});
-							}
+								Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages'", Pagination);
 
-							if (Result is Array A)
-							{
-								int i = A.Length;
-								if (i > 0)
-								{
-									object LastItem = A.GetValue(i - 1);
-									Response.SetHeader("Link", Gateway.GetUrl("/v2/_catalog?n=" + NStr + "&last=" + LastItem.ToString() + "; rel=\"next\""));
-								}
-							}
+							SetLastHeader(Response, "/v2/_catalog?", Result, Pagination);
 						}
 						else
 						{
-							if (Request.Header.TryGetQueryParameter("last", out string Last))
-							{
-								Result = await Expression.EvalAsync("select distinct Image from 'DockerImages' where Image>Last",
-									new Variables()
-									{
-										["Last"] = Last
-									});
-							}
+							if (HasLast)
+								Result = await Expression.EvalAsync("select distinct Image from 'DockerImages' where Image>Last", Pagination);
 							else
 								Result = await Expression.EvalAsync("select distinct Image from 'DockerImages'");
 						}
@@ -311,11 +281,50 @@ namespace TAG.Networking.DockerRegistry
 						{
 							{ "repositories", Result }
 						});
+						return;
+
+					case "tags":
+						if (Pos >= ResourceParts.Length)
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.TAG_INVALID, "Missing tag."));
+
+						string Tag = ResourceParts[Pos++];
+
+						if (Tag == "list")
+						{
+							string Name = JoinNames(Names);
+
+							if (IsPaginated(Request, out HasLast, out Pagination, new Variable("Name", Name)))
+							{
+								if (HasLast)
+									Result = await Expression.EvalAsync("select top N distinct Tag from 'DockerImages' where Image=Name and Tag>Last", Pagination);
+								else
+									Result = await Expression.EvalAsync("select top N distinct Tag from 'DockerImages' where Image=Name", Pagination);
+
+								SetLastHeader(Response, "/v2/" + Name + "/tags/list?", Result, Pagination);
+							}
+							else
+							{
+								if (HasLast)
+									Result = await Expression.EvalAsync("select distinct Tag from 'DockerImages' where Image=Name and Tag>Last", Pagination);
+								else
+									Result = await Expression.EvalAsync("select distinct Tag from 'DockerImages' where Image=Name", Pagination);
+							}
+
+							Response.StatusCode = 200;
+							await Response.Return(new Dictionary<string, object>()
+							{
+								{ "name", Name },
+								{ "tags", Result }
+							});
+							return;
+						}
+						else
+						{
+							// TODO
+						}
 						break;
 
 					case "manifests":
-					// TODO
-					case "tags":
 					// TODO
 					default:
 						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
@@ -326,6 +335,81 @@ namespace TAG.Networking.DockerRegistry
 			catch (Exception ex)
 			{
 				await Response.SendResponse(ex);
+			}
+		}
+
+		private static void SetLastHeader(HttpResponse Response, string BaseQuery, object Result, Variables Pagination)
+		{
+			if (Result is Array A)
+			{
+				int i = A.Length;
+				if (i > 0)
+				{
+					object LastItem = A.GetValue(i - 1);
+					StringBuilder sb = new StringBuilder();
+
+					sb.Append(Gateway.GetUrl(BaseQuery));
+
+					if (Pagination.TryGetVariable("N", out Variable v))
+					{
+						sb.Append("n=");
+						sb.Append(Expression.ToString(v.ValueObject));
+						sb.Append('&');
+					}
+
+					sb.Append("last=");
+					sb.Append(LastItem.ToString());
+					sb.Append("; rel=\"next\"");
+
+					Response.SetHeader("Link", sb.ToString());
+				}
+			}
+		}
+
+		private static bool IsPaginated(HttpRequest Request, out bool HasLast, out Variables Pagination, params Variable[] Variables)
+		{
+			Pagination = null;
+			HasLast = false;
+
+			if ((Variables?.Length ?? 0) > 0)
+			{
+				Pagination = new Variables();
+
+				foreach (Variable v in Variables)
+					Pagination[v.Name] = v.ValueObject;
+			}
+
+			if (Request.Header.TryGetQueryParameter("n", out string NStr))
+			{
+				if (!int.TryParse(NStr, out int N) || N < 0)
+					throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid number of results requested."));
+
+				if (Pagination is null)
+					Pagination = new Variables();
+
+				Pagination["N"] = N;
+
+				if (Request.Header.TryGetQueryParameter("last", out string Last))
+				{
+					HasLast = true;
+					Pagination["Last"] = Last;
+				}
+
+				return true;
+			}
+			else
+			{
+				if (Request.Header.TryGetQueryParameter("last", out string Last))
+				{
+					HasLast = true;
+
+					if (Pagination is null)
+						Pagination = new Variables();
+
+					Pagination["Last"] = Last;
+				}
+
+				return false;
 			}
 		}
 

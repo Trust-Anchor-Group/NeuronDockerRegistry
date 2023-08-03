@@ -132,25 +132,31 @@ on your machine, and so you can access your development Neuron directly, using `
 To check API version: (Empty response=OK, error=Not OK)
 
 ```
-curl -X GET https://localhost:8080/v2/ -u USERNAME:PASSWORD
+curl -X GET http://localhost:8080/v2/ -u USERNAME:PASSWORD
 ```
 
 Fetch the list of repositories in the registry:
 
 ```
-curl -X GET https://localhost:8080/v2/_catalog -u USERNAME:PASSWORD
+curl -X GET http://localhost:8080/v2/_catalog -u USERNAME:PASSWORD
 ```
 
 If you want to use pagination in the request, you can use the `n` and `last` query parameters. If you combine this with `curl`, you
 will need to put the URL within quotes, to avoid problems with the command-line parsing:
 
 ```
-curl -X GET "http://localhost:8080/v2/_catalog?n=10&last=i" -u USERNAME:PASSWORD
+curl -X GET "http://localhost:8080/v2/_catalog?n=MAXCOUNT&last=LASTRESULT" -u USERNAME:PASSWORD
 ```
 
 For each repository returned by the above command, you can list its tags (which typically represent different versions of an 
 image in the repository): (Replace `<repository-name>` with the name of the repository whose tags you want to list.)
 
 ```
-curl -X GET https://localhost:8080/v2/<repository-name>/tags/list -u USERNAME:PASSWORD
+curl -X GET http://localhost:8080/v2/hello-world/tags/list -u USERNAME:PASSWORD
+```
+
+Likewise, `n` and `last` can be used for pagination purposes.
+
+```
+curl -X GET "http://localhost:8080/v2/hello-world/tags/list?n=MAXCOUNT&last=LASTRESULT" -u USERNAME:PASSWORD
 ```
