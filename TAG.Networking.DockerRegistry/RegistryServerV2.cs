@@ -420,19 +420,19 @@ namespace TAG.Networking.DockerRegistry
 							try
 							{
 								await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid);
+
+								Response.StatusCode = 202;
+								Response.StatusMessage = "Accepted";
+								Response.SetHeader("Location", NameUrl(Names) + "/blobs/uploads/" + Uuid.ToString());
+								Response.SetHeader("Range", "0-" + UploadRecord.File.Length.ToString());
+								Response.SetHeader("Docker-Upload-UUID", Uuid.ToString());
+								await Response.SendResponse();
+								return;
 							}
 							finally
 							{
 								UploadRecord.Release();
 							}
-
-							Response.StatusCode = 202;
-							Response.StatusMessage = "Accepted";
-							Response.SetHeader("Location", NameUrl(Names) + "/blobs/uploads/" + Uuid.ToString());
-							Response.SetHeader("Range", "0-0");
-							Response.SetHeader("Docker-Upload-UUID", Uuid.ToString());
-							await Response.SendResponse();
-							return;
 						}
 						else
 						{
