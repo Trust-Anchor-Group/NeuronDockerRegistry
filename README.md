@@ -89,6 +89,22 @@ add an entry to `insecure-registries` (or add the entry if one is missing), as s
 }
 ```
 
+You also need to enable *Docker Content Trust*. This cannot be done by either the docker command-line or Docker Desktop GUI. It is
+done in the operating system. In Windows, this can be performed using the `setx` command:
+
+```
+setx DOCKER_CONTENT_TRUST 1
+```
+
+The Docker Engine needs to be restarted afterwards. Once Docker Trust is enabled, you need to generate signing keys. You can do this
+using the following docker command:
+
+```
+docker trust key generate docker-signer1
+```
+
+This command will generate a docker-signer1.pub file containing the public key, while maintainin the private key to itself.
+
 ## Configuring Neuron User Credentials
 
 Once the DockerRegistry is installed on a Neuron, you need to configure user access privileges for Docker. A Docker client typically
@@ -108,6 +124,12 @@ developmen Neuron accepts requests on port 8080.)
 
 ```
 docker login host.docker.internal:8080 -u USERNAME -p PASSWORD
+```
+
+To sign an image (before upload), you need to have created a signing key (see above). You then issue:
+
+```
+docker trust signer add --key docker-signer1.pub signer1 hello-world
 ```
 
 To upload an image (in the following example, named `hello-world`) to the registry, issue the following command, once logged in:

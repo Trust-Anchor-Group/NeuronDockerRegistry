@@ -11,11 +11,8 @@ using Waher.IoTGateway;
 using Waher.Networking.HTTP;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
-using Waher.Persistence.Serialization;
 using Waher.Runtime.Cache;
 using Waher.Script;
-using Waher.Script.Functions.Vectors;
-using Waher.Script.Model;
 using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry
@@ -136,6 +133,8 @@ namespace TAG.Networking.DockerRegistry
 		{
 			try
 			{
+				SetApiHeader(Response);
+
 				string Resource = Request.SubPath;
 
 				if (Resource == "/" || string.IsNullOrEmpty(Resource))  // API Version Check
@@ -150,16 +149,16 @@ namespace TAG.Networking.DockerRegistry
 				int Len = ResourceParts.Length;
 
 				if (!string.IsNullOrEmpty(ResourceParts[Pos++]))
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+					throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 
 				if (!TryGetKeyResourceName(ResourceParts, out string KeyResourceName, out string[] Names, ref Pos))
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+					throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 
 				switch (KeyResourceName)
 				{
 					case "blobs":
 						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
 
 						HashFunction Function;
 						byte[] Digest;
@@ -169,17 +168,17 @@ namespace TAG.Networking.DockerRegistry
 							Pos++;
 
 							if (!Request.User.HasPrivilege("Docker.Upload"))
-								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 							if (Pos == ResourceParts.Length ||
 								string.IsNullOrEmpty(ResourceParts[Pos]) ||
 								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid))
 							{
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
 							}
 
 							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
-								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."));
+								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
 
 							await UploadRecord.Lock();
 							try
@@ -224,18 +223,18 @@ namespace TAG.Networking.DockerRegistry
 						else
 						{
 							if (!TryGetDigest(ResourceParts, out Function, out Digest, ref Pos))
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
 
 							DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
 								new FilterFieldEqualTo("Digest", Digest),
 								new FilterFieldEqualTo("Function", Function)))
-								?? throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."));
+								?? throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."), apiHeader);
 
 							if (!File.Exists(Blob.FileName))
-								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."));
+								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."), apiHeader);
 
 							if (!Request.User.HasPrivilege("Docker.Download"))
-								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 							using (FileStream BlobFile = File.OpenRead(Blob.FileName))
 							{
@@ -290,7 +289,7 @@ namespace TAG.Networking.DockerRegistry
 
 					case "tags":
 						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.TAG_INVALID, "Missing tag."));
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.TAG_INVALID, "Missing tag."), apiHeader);
 
 						string Tag = ResourceParts[Pos++];
 
@@ -331,7 +330,7 @@ namespace TAG.Networking.DockerRegistry
 
 					case "manifests":
 						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL incomplete."));
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL incomplete."), apiHeader);
 
 						string Reference = ResourceParts[Pos++];
 						string ImageName = JoinNames(Names);
@@ -352,34 +351,29 @@ namespace TAG.Networking.DockerRegistry
 						}
 
 						if (Image is null)
-							throw new NotFoundException(new DockerErrors(DockerErrorCode.MANIFEST_UNKNOWN, "Manifest unknown."));
-
-						//object Manifest = Image.Manifest;
-						//
-						//if (Manifest is GenericObject GenObj)
-						//{
-						//	Dictionary<string, object> NewObj = new Dictionary<string, object>();
-						//
-						//	foreach (KeyValuePair<string, object> P in GenObj.Properties)
-						//		NewObj[P.Key] = P.Value;
-						//
-						//	Manifest = NewObj;
-						//}
+							throw new NotFoundException(new DockerErrors(DockerErrorCode.MANIFEST_UNKNOWN, "Manifest unknown."), apiHeader);
 
 						await Response.Return(Image.Manifest);
 						return;
 
 					default:
-						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 				}
 
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 			}
 			catch (Exception ex)
 			{
 				await Response.SendResponse(ex);
 			}
 		}
+
+		private static void SetApiHeader(HttpResponse Response)
+		{
+			Response.SetHeader(apiHeader.Key, apiHeader.Value);
+		}
+
+		private static readonly KeyValuePair<string, string> apiHeader = new KeyValuePair<string, string>("Docker-Distribution-API-Version", "registry/2.0");
 
 		private static void SetLastHeader(HttpResponse Response, string BaseQuery, object Result, Variables Pagination)
 		{
@@ -425,7 +419,7 @@ namespace TAG.Networking.DockerRegistry
 			if (Request.Header.TryGetQueryParameter("n", out string NStr))
 			{
 				if (!int.TryParse(NStr, out int N) || N < 0)
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid number of results requested."));
+					throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid number of results requested."), apiHeader);
 
 				if (Pagination is null)
 					Pagination = new Variables();
@@ -486,8 +480,10 @@ namespace TAG.Networking.DockerRegistry
 		{
 			try
 			{
+				SetApiHeader(Response);
+
 				if (!Request.User.HasPrivilege("Docker.Upload"))
-					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
 
@@ -495,7 +491,7 @@ namespace TAG.Networking.DockerRegistry
 				{
 					case "blobs":
 						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
 
 						if (ResourceParts[Pos] == "uploads")
 						{
@@ -535,10 +531,10 @@ namespace TAG.Networking.DockerRegistry
 					case "tags":
 					// TODO
 					default:
-						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 				}
 
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 			}
 			catch (Exception ex)
 			{
@@ -555,8 +551,10 @@ namespace TAG.Networking.DockerRegistry
 		{
 			try
 			{
+				SetApiHeader(Response);
+
 				if (!Request.User.HasPrivilege("Docker.Upload"))
-					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
 
@@ -564,7 +562,7 @@ namespace TAG.Networking.DockerRegistry
 				{
 					case "blobs":
 						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
 
 						if (ResourceParts[Pos] == "uploads")
 						{
@@ -574,11 +572,11 @@ namespace TAG.Networking.DockerRegistry
 								string.IsNullOrEmpty(ResourceParts[Pos]) ||
 								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid))
 							{
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
 							}
 
 							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
-								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."));
+								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
 
 							this.uploads.Remove(Uuid);
 
@@ -599,10 +597,10 @@ namespace TAG.Networking.DockerRegistry
 					case "tags":
 					// TODO
 					default:
-						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 				}
 
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 			}
 			catch (Exception ex)
 			{
@@ -630,8 +628,10 @@ namespace TAG.Networking.DockerRegistry
 		{
 			try
 			{
+				SetApiHeader(Response);
+
 				if (!Request.User.HasPrivilege("Docker.Upload"))
-					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
 
@@ -639,7 +639,7 @@ namespace TAG.Networking.DockerRegistry
 				{
 					case "blobs":
 						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
 
 						if (ResourceParts[Pos] == "uploads")
 						{
@@ -650,11 +650,11 @@ namespace TAG.Networking.DockerRegistry
 								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid) ||
 								!Request.HasData)
 							{
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
 							}
 
 							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
-								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."));
+								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
 
 							await UploadRecord.Lock();
 							try
@@ -688,10 +688,10 @@ namespace TAG.Networking.DockerRegistry
 					case "tags":
 					// TODO
 					default:
-						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 				}
 
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 			}
 			catch (Exception ex)
 			{
@@ -719,8 +719,10 @@ namespace TAG.Networking.DockerRegistry
 		{
 			try
 			{
+				SetApiHeader(Response);
+
 				if (!Request.User.HasPrivilege("Docker.Upload"))
-					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
 
@@ -728,7 +730,7 @@ namespace TAG.Networking.DockerRegistry
 				{
 					case "blobs":
 						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
 
 						string DigestStr;
 						byte[] Digest;
@@ -742,11 +744,11 @@ namespace TAG.Networking.DockerRegistry
 								string.IsNullOrEmpty(ResourceParts[Pos]) ||
 								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid))
 							{
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."));
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
 							}
 
 							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
-								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."));
+								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
 
 							await UploadRecord.Lock();
 							try
@@ -758,7 +760,7 @@ namespace TAG.Networking.DockerRegistry
 									!TryParseDigest(DigestStr = HttpUtility.UrlDecode(DigestStr), out Function, out Digest) ||
 									Convert.ToBase64String(Digest) != Convert.ToBase64String(UploadRecord.ComputeDigestLocked(Function)))
 								{
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
 								}
 
 
@@ -769,7 +771,7 @@ namespace TAG.Networking.DockerRegistry
 									new FilterFieldEqualTo("Function", Function)));
 
 								if (File.Exists(ContentFileName) || !(Prev is null))
-									throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "BLOB already exists."));
+									throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "BLOB already exists."), apiHeader);
 
 								using (FileStream Content = File.Create(ContentFileName))
 								{
@@ -801,7 +803,7 @@ namespace TAG.Networking.DockerRegistry
 
 					case "manifests":
 						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL incomplete."));
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL incomplete."), apiHeader);
 
 						string Reference = ResourceParts[Pos++];
 						object Manifest = await Request.DecodeDataAsync();
@@ -809,12 +811,15 @@ namespace TAG.Networking.DockerRegistry
 						string Tag = null;
 
 						if (!(Manifest is Dictionary<string, object> ManifestObj))
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Unrecognized content."));
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Unrecognized content."), apiHeader);
+
+						//if (!ManifestObj.TryGetValue("signature", out object Obj) || !(Obj is Dictionary<string, object> Signature))
+						//	throw new ForbiddenException(new DockerErrors(DockerErrorCode.MANIFEST_UNVERIFIED, "Manifest failed signature verification."), apiHeader);
 
 						if (ManifestObj.TryGetValue("name", out object Obj))
 						{
 							if (!(Obj is string ManifestName) || ImageName != ManifestName)
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL name mismatch."));
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL name mismatch."), apiHeader);
 						}
 
 						if (ManifestObj.TryGetValue("layers", out Obj) && Obj is Array Layers)
@@ -835,14 +840,14 @@ namespace TAG.Networking.DockerRegistry
 										"BLOB unknown to registry.", new Dictionary<string, object>()
 										{
 											{ "digest", LayerDigestStr }
-										}));
+										}), apiHeader);
 								}
 								else
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Invalid layer."));
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Invalid layer."), apiHeader);
 							}
 						}
 						else
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing layers."));
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing layers."), apiHeader);
 
 						if (TryParseDigest(Reference, out Function, out Digest))
 						{
@@ -853,11 +858,11 @@ namespace TAG.Networking.DockerRegistry
 								if ((DigestStr = Obj as string) is null ||
 									!TryParseDigest(DigestStr, out HashFunction Function2, out byte[] Digest2))
 								{
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing digest in config."));
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing digest in config."), apiHeader);
 								}
 
 								if (Function != Function2 || Convert.ToBase64String(Digest) != Convert.ToBase64String(Digest2))
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Digest mismatch."));
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Digest mismatch."), apiHeader);
 							}
 						}
 						else
@@ -870,11 +875,11 @@ namespace TAG.Networking.DockerRegistry
 									(DigestStr = Obj as string) is null ||
 									!TryParseDigest(DigestStr, out Function, out Digest))
 								{
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing digest in config."));
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing digest in config."), apiHeader);
 								}
 							}
 							else
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing config."));
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing config."), apiHeader);
 						}
 
 						if (Pos == ResourceParts.Length)
@@ -891,7 +896,7 @@ namespace TAG.Networking.DockerRegistry
 								if (!(Image is null))
 									Tag = Image.Tag;
 								else
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing tag."));
+									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing tag."), apiHeader);
 							}
 							else
 							{
@@ -915,7 +920,7 @@ namespace TAG.Networking.DockerRegistry
 								await Database.Insert(Image);
 							}
 							else if (Image.AccountName != Request.User.UserName)
-								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."));
+								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 							else
 							{
 								if (string.IsNullOrEmpty(Tag))
@@ -932,6 +937,7 @@ namespace TAG.Networking.DockerRegistry
 
 							Response.StatusCode = 201;
 							Response.StatusMessage = "Created";
+							Response.SetHeader("Docker-Content-Digest", GetDigestString(Request.DataStream));
 							await Response.SendResponse();
 							return;
 						}
@@ -942,10 +948,10 @@ namespace TAG.Networking.DockerRegistry
 					case "tags":
 					// TODO
 					default:
-						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 				}
 
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 			}
 			catch (Exception ex)
 			{
@@ -1035,17 +1041,17 @@ namespace TAG.Networking.DockerRegistry
 			out string KeyResourceName, out string[] Names)
 		{
 			if (Resource == "/" || string.IsNullOrEmpty(Resource))  // API Version Check
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 
 			ResourceParts = Resource.Split('/');
 			Len = ResourceParts.Length;
 			Pos = 0;
 
 			if (!string.IsNullOrEmpty(ResourceParts[Pos++]))
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 
 			if (!TryGetKeyResourceName(ResourceParts, out KeyResourceName, out Names, ref Pos))
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
+				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 		}
 
 		private static string NameUrl(string[] Names)
@@ -1137,7 +1143,7 @@ namespace TAG.Networking.DockerRegistry
 				}
 
 				if (!IsName(s))
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.NAME_INVALID, "Invalid repository name."));
+					throw new BadRequestException(new DockerErrors(DockerErrorCode.NAME_INVALID, "Invalid repository name."), apiHeader);
 
 				Names.Add(s);
 			}
@@ -1145,9 +1151,27 @@ namespace TAG.Networking.DockerRegistry
 			return false;
 		}
 
+		private static string GetDigestString(byte[] Digest)
+		{
+			return GetDigestString(HashFunction.SHA256, Digest);
+		}
+
 		private static string GetDigestString(HashFunction HashFunction, byte[] Digest)
 		{
 			return HashFunction.ToString().ToLower() + ":" + Hashes.BinaryToString(Digest);
+		}
+
+		private static string GetDigestString(Stream Data)
+		{
+			return GetDigestString(HashFunction.SHA256, Data);
+		}
+
+		private static string GetDigestString(HashFunction HashFunction, Stream Data)
+		{
+			Data.Position = 0;
+			byte[] Digest = Hashes.ComputeHash(HashFunction, Data);
+
+			return GetDigestString(HashFunction, Digest);
 		}
 
 		/// <summary>

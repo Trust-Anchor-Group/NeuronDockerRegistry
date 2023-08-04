@@ -47,7 +47,7 @@
 		/// <summary>
 		/// During manifest upload, if the manifest fails signature verification, this error will be returned.
 		/// </summary>
-		MANIFEST_UNVERIFIED,    // manifest failed signature verification  
+		MANIFEST_UNVERIFIED,
 
 		/// <summary>
 		/// Invalid repository name encountered either during manifest validation or any API operation.
