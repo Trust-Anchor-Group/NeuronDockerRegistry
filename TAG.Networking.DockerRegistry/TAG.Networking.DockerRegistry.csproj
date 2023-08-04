@@ -13,6 +13,7 @@
     <PackageReference Include="Waher.Runtime.Cache" Version="1.0.6" />
     <PackageReference Include="Waher.Security" Version="1.0.8" />
     <PackageReference Include="Waher.Security.JWS" Version="1.0.8" />
+    <PackageReference Include="Waher.Security.LoginMonitor" Version="1.0.9" />
   </ItemGroup>
 
 </Project>

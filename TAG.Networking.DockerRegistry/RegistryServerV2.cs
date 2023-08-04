@@ -7,6 +7,7 @@ using System.Threading.Tasks;
 using System.Web;
 using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
+using Waher.Events;
 using Waher.IoTGateway;
 using Waher.Networking.HTTP;
 using Waher.Persistence;
@@ -14,6 +15,7 @@ using Waher.Persistence.Filters;
 using Waher.Runtime.Cache;
 using Waher.Script;
 using Waher.Security;
+using Waher.Security.LoginMonitor;
 
 namespace TAG.Networking.DockerRegistry
 {
@@ -934,6 +936,12 @@ namespace TAG.Networking.DockerRegistry
 
 								await Database.Update(Image);
 							}
+
+							Log.Informational("Docker image uploaded.", Image.Image, Request.User.UserName,
+								await LoginAuditor.Annotate(Request.RemoteEndPoint,
+								new KeyValuePair<string, object>("Tag", Image.Tag),
+								new KeyValuePair<string, object>("Digest", GetDigestString(Image.Function, Image.Digest)),
+								new KeyValuePair<string, object>("RemoteEndPoint", Request.RemoteEndPoint)));
 
 							Response.StatusCode = 201;
 							Response.StatusMessage = "Created";

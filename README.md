@@ -29,6 +29,7 @@ They can also be used standalone.
 | [Waher.Runtime.Inventory](https://www.nuget.org/packages/Waher.Runtime.Inventory/)                 | Maintains an inventory of type definitions in the runtime environment, and permits easy instantiation of suitable classes, and inversion of control (IoC). |
 | [Waher.Security](https://www.nuget.org/packages/Waher.Security/)                                   | Contains basic cryptography functions. |
 | [Waher.Security.JWS](https://www.nuget.org/packages/Waher.Security.JWS/)                           | Mananges JWS signatures of JSON objects. |
+| [Waher.Security.LoginMonitor](https://www.nuget.org/packages/Waher.Security.LoginMonitor/)         | Protects against malicious attempts to login, and allows application to log annotated information about remote endpoints. |
 
 ## Installable Package
 
