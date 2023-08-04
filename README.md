@@ -46,7 +46,7 @@ the package using the following information:
 | Package information                                                                                                              ||
 |:-----------------|:---------------------------------------------------------------------------------------------------------------|
 | Package          | `TAG.DockerRegistry.package`                                                                                   |
-| Installation key | TBD                                                                                                            |
+| Installation key | `dJV0LQfyi4T1YUhQrSIL05iGzVGhTN/O4zLBtu0tWdg+30orVyOd3PVCE/l5jetku9oklovkFIWA76035a54b7dcf1df2b411e5b5c28aca0` |
 | More Information | TBD                                                                                                            |
 
 ## Building, Compiling & Debugging
