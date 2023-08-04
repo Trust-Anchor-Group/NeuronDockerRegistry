@@ -11,9 +11,11 @@ using Waher.IoTGateway;
 using Waher.Networking.HTTP;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
+using Waher.Persistence.Serialization;
 using Waher.Runtime.Cache;
 using Waher.Script;
 using Waher.Script.Functions.Vectors;
+using Waher.Script.Model;
 using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry
@@ -159,6 +161,9 @@ namespace TAG.Networking.DockerRegistry
 						if (Pos >= ResourceParts.Length)
 							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
 
+						HashFunction Function;
+						byte[] Digest;
+
 						if (ResourceParts[Pos] == "uploads")
 						{
 							Pos++;
@@ -218,7 +223,7 @@ namespace TAG.Networking.DockerRegistry
 						}
 						else
 						{
-							if (!TryGetDigest(ResourceParts, out HashFunction Function, out byte[] Digest, ref Pos))
+							if (!TryGetDigest(ResourceParts, out Function, out Digest, ref Pos))
 								throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."));
 
 							DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
@@ -325,7 +330,45 @@ namespace TAG.Networking.DockerRegistry
 						break;
 
 					case "manifests":
-					// TODO
+						if (Pos >= ResourceParts.Length)
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL incomplete."));
+
+						string Reference = ResourceParts[Pos++];
+						string ImageName = JoinNames(Names);
+						DockerImage Image;
+
+						if (TryParseDigest(Reference, out Function, out Digest))
+						{
+							Image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
+								new FilterFieldEqualTo("Image", ImageName),
+								new FilterFieldEqualTo("Digest", Digest),
+								new FilterFieldEqualTo("Function", Function)));
+						}
+						else
+						{
+							Image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
+								new FilterFieldEqualTo("Image", ImageName),
+								new FilterFieldEqualTo("Tag", Reference)));
+						}
+
+						if (Image is null)
+							throw new NotFoundException(new DockerErrors(DockerErrorCode.MANIFEST_UNKNOWN, "Manifest unknown."));
+
+						//object Manifest = Image.Manifest;
+						//
+						//if (Manifest is GenericObject GenObj)
+						//{
+						//	Dictionary<string, object> NewObj = new Dictionary<string, object>();
+						//
+						//	foreach (KeyValuePair<string, object> P in GenObj.Properties)
+						//		NewObj[P.Key] = P.Value;
+						//
+						//	Manifest = NewObj;
+						//}
+
+						await Response.Return(Image.Manifest);
+						return;
+
 					default:
 						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."));
 				}

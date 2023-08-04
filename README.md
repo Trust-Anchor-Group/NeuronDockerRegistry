@@ -123,6 +123,12 @@ your local registry first. You do this with the following command:
 docker tag docker.io/hello-world host.docker.internal:8080/hello-world
 ```
 
+To pull an image (in the following example, named `hello-world`) from the registry, issue the following command, once logged in:
+
+```
+docker pull host.docker.internal:8080/hello-world
+```
+
 ## Using curl
 
 Many of the API resources cannot be accessed directly by the Docker command-line tool. To access these, you can use an alternative

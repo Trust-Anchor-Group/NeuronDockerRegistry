@@ -42,7 +42,7 @@
 		/// <summary>
 		/// This error is returned when the manifest, identified by name and tag is unknown to the repository.
 		/// </summary>
-		MANIFEST_UNKNOWN,       // manifest unknown    
+		MANIFEST_UNKNOWN,
 
 		/// <summary>
 		/// During manifest upload, if the manifest fails signature verification, this error will be returned.
