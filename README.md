@@ -126,16 +126,23 @@ developmen Neuron accepts requests on port 8080.)
 docker login host.docker.internal:8080 -u USERNAME -p PASSWORD
 ```
 
-To sign an image (before upload), you need to have created a signing key (see above). You then issue:
+To build an image on you local machine, you type (IMAGE is the name of the image you build, PATH is where the `Dockerfile` is 
+located):
 
 ```
-docker trust signer add --key docker-signer1.pub signer1 hello-world
+Docker build -t IMAGE PATH
 ```
 
 To upload an image (in the following example, named `hello-world`) to the registry, issue the following command, once logged in:
 
 ```
 docker push host.docker.internal:8080/hello-world
+```
+
+To sign an image (before upload), you need to have created a signing key (see above). You then issue:
+
+```
+docker trust signer add --key docker-signer1.pub signer1 hello-world
 ```
 
 If you have downloaded an image from another registry, and wish to upload it to your local registry, you will have to tag it for
