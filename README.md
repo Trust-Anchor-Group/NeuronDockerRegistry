@@ -134,6 +134,20 @@ located):
 Docker build -t IMAGE PATH
 ```
 
+If you have downloaded an image from another registry, or created your own image, and wish to upload it to your local registry,
+or a remote registry, you will have to tag it for your that registry first. You tag a remote image for your local repository
+as follows:
+
+```
+docker tag docker.io/hello-world host.docker.internal:8080/hello-world
+```
+
+You tag a local image for upload to a remote registry as follows:
+
+```
+docker tag hello build.tagroot.io/hello
+```
+
 To upload an image (in the following example, named `hello-world`) to the registry, issue the following command, once logged in:
 
 ```
@@ -144,13 +158,6 @@ To sign an image (before upload), you need to have created a signing key (see ab
 
 ```
 docker trust signer add --key docker-signer1.pub signer1 hello-world
-```
-
-If you have downloaded an image from another registry, and wish to upload it to your local registry, you will have to tag it for
-your local registry first. You do this with the following command:
-
-```
-docker tag docker.io/hello-world host.docker.internal:8080/hello-world
 ```
 
 To pull an image (in the following example, named `hello-world`) from the registry, issue the following command, once logged in:
