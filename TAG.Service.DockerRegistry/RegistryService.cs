@@ -2,7 +2,6 @@
 using System.Threading.Tasks;
 using TAG.Networking.DockerRegistry;
 using Waher.IoTGateway;
-using Waher.IoTGateway.WebResources;
 using Waher.Networking.HTTP.Authentication;
 using Waher.Networking.HTTP;
 using Waher.Networking;
