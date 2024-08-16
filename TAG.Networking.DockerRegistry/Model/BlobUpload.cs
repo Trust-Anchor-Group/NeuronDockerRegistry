@@ -117,7 +117,7 @@ namespace TAG.Networking.DockerRegistry.Model
             }
 			catch (Exception ex)
 			{
-				Log.Critical(ex);
+				Log.Exception(ex);
 			}
 		}
 	}
