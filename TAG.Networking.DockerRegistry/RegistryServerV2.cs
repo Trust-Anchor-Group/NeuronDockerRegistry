@@ -110,9 +110,10 @@ namespace TAG.Networking.DockerRegistry
 			return M.Success && M.Index == 0 && M.Length == Name.Length;
 		}
 
-		private void Uploads_Removed(object Sender, CacheItemEventArgs<Guid, BlobUpload> e)
+		private Task Uploads_Removed(object Sender, CacheItemEventArgs<Guid, BlobUpload> e)
 		{
 			e.Value.Dispose();
+			return Task.CompletedTask;
 		}
 
 		/// <summary>
