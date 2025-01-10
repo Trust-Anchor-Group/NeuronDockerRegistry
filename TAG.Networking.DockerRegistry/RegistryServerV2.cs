@@ -424,9 +424,7 @@ namespace TAG.Networking.DockerRegistry
 				if (!int.TryParse(NStr, out int N) || N < 0)
 					throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid number of results requested."), apiHeader);
 
-				if (Pagination is null)
-					Pagination = new Variables();
-
+				Pagination ??= new Variables();
 				Pagination["N"] = N;
 
 				if (Request.Header.TryGetQueryParameter("last", out string Last))
@@ -443,9 +441,7 @@ namespace TAG.Networking.DockerRegistry
 				{
 					HasLast = true;
 
-					if (Pagination is null)
-						Pagination = new Variables();
-
+					Pagination ??= new Variables();
 					Pagination["Last"] = Last;
 				}
 
@@ -467,7 +463,7 @@ namespace TAG.Networking.DockerRegistry
 					NrBytes = (int)Math.Min(65536, Count);
 
 					await File.ReadAsync(Buf, 0, NrBytes);
-					await Response.Write(Buf, 0, NrBytes);
+					await Response.Write(false, Buf, 0, NrBytes);
 
 					Count -= NrBytes;
 				}
@@ -1115,12 +1111,12 @@ namespace TAG.Networking.DockerRegistry
 			if (i < 0)
 				return false;
 
-			if (!Enum.TryParse(s.Substring(0, i), true, out Function))
+			if (!Enum.TryParse(s[..i], true, out Function))
 				return false;
 
 			try
 			{
-				Digest = Hashes.StringToBinary(s.Substring(i + 1));
+				Digest = Hashes.StringToBinary(s[(i + 1)..]);
 				return true;
 			}
 			catch (Exception)
@@ -1199,12 +1195,12 @@ namespace TAG.Networking.DockerRegistry
 		/// <returns>Custom content, or null if none.</returns>
 		public override Task<object> DefaultErrorContent(int StatusCode)
 		{
-			switch (StatusCode)
+			return StatusCode switch
 			{
-				case 429: return Task.FromResult<object>(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied due to rate limitations."));
-				case 401: return Task.FromResult<object>(new DockerErrors(DockerErrorCode.UNAUTHORIZED, "Authentication required."));
-				default: return base.DefaultErrorContent(StatusCode);
-			}
+				429 => Task.FromResult<object>(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied due to rate limitations.")),
+				401 => Task.FromResult<object>(new DockerErrors(DockerErrorCode.UNAUTHORIZED, "Authentication required.")),
+				_ => base.DefaultErrorContent(StatusCode),
+			};
 		}
 	}
 }

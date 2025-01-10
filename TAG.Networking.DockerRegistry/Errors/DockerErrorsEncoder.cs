@@ -55,44 +55,52 @@ namespace TAG.Networking.DockerRegistry.Errors
 		/// </summary>
 		/// <param name="Object">Object instance.</param>
 		/// <param name="Encoding">Default text encoding.</param>
+		/// <param name="Progress">Optional interface to which codecs can report progress.</param>
 		/// <param name="AcceptedContentTypes">Accepted content-types.</param>
 		/// <returns>Encoded object.</returns>
-		public Task<KeyValuePair<byte[], string>> EncodeAsync(object Object, Encoding Encoding, params string[] AcceptedContentTypes)
+		public Task<ContentResponse> EncodeAsync(object Object, Encoding Encoding, 
+			ICodecProgress Progress, params string[] AcceptedContentTypes)
 		{
-			if (!(Object is DockerErrors Errors))
+			try
 			{
-				if (Object is DockerError Error)
-					Errors = new DockerErrors(Error);
-				else if (Object is DockerErrorCode ErrorCode)
-					Errors = new DockerErrors(ErrorCode);
-				else
-					throw new ArgumentException("Object not a Docker error.", nameof(Object));
-			}
+				if (!(Object is DockerErrors Errors))
+				{
+					if (Object is DockerError Error)
+						Errors = new DockerErrors(Error);
+					else if (Object is DockerErrorCode ErrorCode)
+						Errors = new DockerErrors(ErrorCode);
+					else
+						throw new ArgumentException("Object not a Docker error.", nameof(Object));
+				}
 
-			List<Dictionary<string, object>> EncodedErrors = new List<Dictionary<string, object>>();
+				List<Dictionary<string, object>> EncodedErrors = new List<Dictionary<string, object>>();
 
-			foreach (DockerError Error in Errors.Errors)
-			{
-				EncodedErrors.Add(new Dictionary<string, object>()
+				foreach (DockerError Error in Errors.Errors)
+				{
+					EncodedErrors.Add(new Dictionary<string, object>()
 				{
 					{ "code", Error.Code },
 					{ "message", Error.Message },
 					{ "detail", Error.Detail }
 				});
-			}
+				}
 
-			string s = JSON.Encode(new Dictionary<string, object>()
+				string s = JSON.Encode(new Dictionary<string, object>()
 			{
 				{"errors", EncodedErrors.ToArray() }
 			}, false);
 
-			if (Encoding is null)
-				Encoding = Encoding.UTF8;
+				Encoding ??= Encoding.UTF8;
 
-			byte[] Bin = Encoding.GetBytes(s);
-			string ContentType = Waher.Content.Json.JsonCodec.DefaultContentType + "; charset=" + Encoding.WebName;
+				byte[] Bin = Encoding.GetBytes(s);
+				string ContentType = Waher.Content.Json.JsonCodec.DefaultContentType + "; charset=" + Encoding.WebName;
 
-			return Task.FromResult(new KeyValuePair<byte[], string>(Bin, ContentType));
+				return Task.FromResult(new ContentResponse(ContentType, Bin, Bin));
+			}
+			catch (Exception ex)
+			{
+				return Task.FromResult(new ContentResponse(ex));
+			}
 		}
 
 		/// <summary>
