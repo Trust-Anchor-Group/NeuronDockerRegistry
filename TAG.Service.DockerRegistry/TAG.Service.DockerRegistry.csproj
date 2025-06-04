@@ -15,8 +15,8 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Waher.IoTGateway" Version="3.3.3" />
-    <PackageReference Include="Waher.Runtime.Inventory" Version="1.4.1" />
+    <PackageReference Include="Waher.IoTGateway" Version="3.4.1" />
+    <PackageReference Include="Waher.Runtime.Inventory" Version="1.4.3" />
   </ItemGroup>
 
   <ItemGroup>
