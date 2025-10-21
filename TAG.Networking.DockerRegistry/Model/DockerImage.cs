@@ -1,5 +1,4 @@
 ﻿using Waher.Persistence.Attributes;
-using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry.Model
 {
@@ -10,7 +9,7 @@ namespace TAG.Networking.DockerRegistry.Model
 	[TypeName(TypeNameSerialization.None)]
 	[Index("AccountName", "Image", "Tag")]
 	[Index("Image", "Tag")]
-	[Index("Image", "Digest", "Function")]
+	[Index("Image", "Digest")]
 	public class DockerImage
 	{
 		/// <summary>
@@ -44,16 +43,11 @@ namespace TAG.Networking.DockerRegistry.Model
 		/// <summary>
 		/// Image Digest
 		/// </summary>
-		public byte[] Digest { get; set; }
-
-		/// <summary>
-		/// Image Digest hash function
-		/// </summary>
-		public HashFunction Function { get; set; }
+		public HashDigest Digest { get; set; }
 
 		/// <summary>
 		/// 
 		/// </summary>
-		public object Manifest { get; set; }
-	}
+		public IImageManifest Manifest { get; set; }
+    }
 }

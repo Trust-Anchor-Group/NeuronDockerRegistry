@@ -7,11 +7,18 @@ using System.Threading.Tasks;
 using System.Web;
 using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
+using TAG.Networking.DockerRegistry.Model.Docker;
+using TAG.Networking.DockerRegistry.Model.Oci;
+using Waher.Content;
+using Waher.Content.Binary;
 using Waher.Events;
 using Waher.IoTGateway;
 using Waher.Networking.HTTP;
+using Waher.Networking.HTTP.HeaderFields;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
+using Waher.Persistence.Serialization;
+using Waher.Reports.Files.Model;
 using Waher.Runtime.Cache;
 using Waher.Script;
 using Waher.Security;
@@ -163,8 +170,7 @@ namespace TAG.Networking.DockerRegistry
 						if (Pos >= ResourceParts.Length)
 							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
 
-						HashFunction Function;
-						byte[] Digest;
+						HashDigest Digest;
 
 						if (ResourceParts[Pos] == "uploads")
 						{
@@ -225,12 +231,11 @@ namespace TAG.Networking.DockerRegistry
 						}
 						else
 						{
-							if (!TryGetDigest(ResourceParts, out Function, out Digest, ref Pos))
+							if (!TryGetDigest(ResourceParts, out Digest, ref Pos))
 								throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
 
 							DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
-								new FilterFieldEqualTo("Digest", Digest),
-								new FilterFieldEqualTo("Function", Function)))
+								new FilterFieldEqualTo("Digest", Digest)))
 								?? throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."), apiHeader);
 
 							if (!File.Exists(Blob.FileName))
@@ -253,6 +258,8 @@ namespace TAG.Networking.DockerRegistry
 								}
 
 								Response.StatusCode = 200;
+								Response.SetHeader("Content-Length", BlobFile.Length.ToString());
+								Response.SetHeader("Docker-Content-Digest", Blob.Digest.ToString());
 								Response.SetHeader("Content-Range", Offset.ToString() + "-" +
 									(Offset + Count - 1).ToString() + "/" + BlobFile.Length.ToString());
 
@@ -339,12 +346,11 @@ namespace TAG.Networking.DockerRegistry
 						string ImageName = JoinNames(Names);
 						DockerImage Image;
 
-						if (TryParseDigest(Reference, out Function, out Digest))
+						if (HashDigest.TryParseDigest(Reference, out Digest))
 						{
 							Image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
 								new FilterFieldEqualTo("Image", ImageName),
-								new FilterFieldEqualTo("Digest", Digest),
-								new FilterFieldEqualTo("Function", Function)));
+								new FilterFieldEqualTo("Digest", Digest)));
 						}
 						else
 						{
@@ -356,9 +362,10 @@ namespace TAG.Networking.DockerRegistry
 						if (Image is null)
 							throw new NotFoundException(new DockerErrors(DockerErrorCode.MANIFEST_UNKNOWN, "Manifest unknown."), apiHeader);
 
+						Request.Header.AcceptEncoding = null;
+
 						await Response.Return(Image.Manifest);
 						return;
-
 					default:
 						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
 				}
@@ -732,8 +739,7 @@ namespace TAG.Networking.DockerRegistry
 							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
 
 						string DigestStr;
-						byte[] Digest;
-						HashFunction Function;
+						HashDigest Digest;
 
 						if (ResourceParts[Pos] == "uploads")
 						{
@@ -756,18 +762,16 @@ namespace TAG.Networking.DockerRegistry
 									await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid, Names);
 
 								if (!Request.Header.TryGetQueryParameter("digest", out DigestStr) ||
-									!TryParseDigest(DigestStr = HttpUtility.UrlDecode(DigestStr), out Function, out Digest) ||
-									Convert.ToBase64String(Digest) != Convert.ToBase64String(UploadRecord.ComputeDigestLocked(Function)))
+									!HashDigest.TryParseDigest(DigestStr = HttpUtility.UrlDecode(DigestStr), out Digest) ||
+									Convert.ToBase64String(Digest.Hash) != Convert.ToBase64String(UploadRecord.ComputeDigestLocked(Digest.HashFunction)))
 								{
 									throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
 								}
 
-
-								string ContentFileName = Path.Combine(this.BlobFolder, Hashes.BinaryToString(Digest) + ".bin");
+								string ContentFileName = Path.Combine(this.BlobFolder, Hashes.BinaryToString(Digest.Hash) + ".bin");
 
 								DockerBlob Prev = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
-									new FilterFieldEqualTo("Digest", Digest),
-									new FilterFieldEqualTo("Function", Function)));
+									new FilterFieldEqualTo("Digest", Digest)));
 
 								if (File.Exists(ContentFileName) || !(Prev is null))
 									throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "BLOB already exists."), apiHeader);
@@ -778,7 +782,6 @@ namespace TAG.Networking.DockerRegistry
 									await UploadRecord.File.CopyToAsync(Content);
 								}
 
-								UploadRecord.Blob.Function = Function;
 								UploadRecord.Blob.Digest = Digest;
 								UploadRecord.Blob.FileName = ContentFileName;
 
@@ -805,81 +808,36 @@ namespace TAG.Networking.DockerRegistry
 							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL incomplete."), apiHeader);
 
 						string Reference = ResourceParts[Pos++];
-						object Manifest = await Request.DecodeDataAsync();
+						ContentResponse ManifestContentResponse = await Request.DecodeDataAsync();
 						string ImageName = JoinNames(Names);
 						string Tag = null;
 
-						if (!(Manifest is Dictionary<string, object> ManifestObj))
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Unrecognized content."), apiHeader);
+						IImageManifest Manifest;
 
-						//if (!ManifestObj.TryGetValue("signature", out object Obj) || !(Obj is Dictionary<string, object> Signature))
-						//	throw new ForbiddenException(new DockerErrors(DockerErrorCode.MANIFEST_UNVERIFIED, "Manifest failed signature verification."), apiHeader);
+						if (ManifestContentResponse.Decoded is OCIImageManifest OciManifest)
+							Manifest = OciManifest;
+						if (ManifestContentResponse.Decoded is DockerImageManifestV2 DockerManifestV2)
+							Manifest = DockerManifestV2;
+						else
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid."), apiHeader);
 
-						if (ManifestObj.TryGetValue("name", out object Obj))
+						foreach (IImageLayer Layer in Manifest.GetLayers())
 						{
-							if (!(Obj is string ManifestName) || ImageName != ManifestName)
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL name mismatch."), apiHeader);
+							DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
+								new FilterFieldEqualTo("Digest", Layer.Digest))) ?? throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN,
+								"BLOB unknown to registry.", new Dictionary<string, object>()
+								{
+									{ "digest", Layer.Digest.ToString() }
+								}), apiHeader);
 						}
 
-						if (ManifestObj.TryGetValue("layers", out Obj) && Obj is Array Layers)
+						if (HashDigest.TryParseDigest(Reference, out Digest))
 						{
-							int i, c = Layers.Length;
-
-							for (i = 0; i < c; i++)
-							{
-								if (Layers.GetValue(i) is Dictionary<string, object> LayerObj &&
-									LayerObj.TryGetValue("digest", out Obj) &&
-									Obj is string LayerDigestStr &&
-									TryParseDigest(LayerDigestStr, out HashFunction LayerFunction, out byte[] LayerDigest))
-								{
-									DockerBlob Layer = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
-										new FilterFieldEqualTo("Digest", LayerDigest),
-										new FilterFieldEqualTo("Function", LayerFunction)))
-										?? throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN,
-										"BLOB unknown to registry.", new Dictionary<string, object>()
-										{
-											{ "digest", LayerDigestStr }
-										}), apiHeader);
-								}
-								else
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Invalid layer."), apiHeader);
-							}
+							if (!(Digest != Manifest.GetConfig().Digest))
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Digest mismatch."), apiHeader);
 						}
 						else
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing layers."), apiHeader);
-
-						if (TryParseDigest(Reference, out Function, out Digest))
-						{
-							if (ManifestObj.TryGetValue("config", out Obj) &&
-								Obj is Dictionary<string, object> Config &&
-								Config.TryGetValue("digest", out Obj))
-							{
-								if ((DigestStr = Obj as string) is null ||
-									!TryParseDigest(DigestStr, out HashFunction Function2, out byte[] Digest2))
-								{
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing digest in config."), apiHeader);
-								}
-
-								if (Function != Function2 || Convert.ToBase64String(Digest) != Convert.ToBase64String(Digest2))
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Digest mismatch."), apiHeader);
-							}
-						}
-						else
-						{
 							Tag = Reference;
-
-							if (ManifestObj.TryGetValue("config", out Obj) && Obj is Dictionary<string, object> Config)
-							{
-								if (!Config.TryGetValue("digest", out Obj) ||
-									(DigestStr = Obj as string) is null ||
-									!TryParseDigest(DigestStr, out Function, out Digest))
-								{
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing digest in config."), apiHeader);
-								}
-							}
-							else
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing config."), apiHeader);
-						}
 
 						if (Pos == ResourceParts.Length)
 						{
@@ -889,8 +847,7 @@ namespace TAG.Networking.DockerRegistry
 							{
 								Image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
 									new FilterFieldEqualTo("Image", ImageName),
-									new FilterFieldEqualTo("Digest", Digest),
-									new FilterFieldEqualTo("Function", Function)));
+									new FilterFieldEqualTo("Digest", Digest)));
 
 								if (!(Image is null))
 									Tag = Image.Tag;
@@ -912,8 +869,7 @@ namespace TAG.Networking.DockerRegistry
 									Image = ImageName,
 									Tag = Tag,
 									Manifest = Manifest,
-									Digest = Digest,
-									Function = Function
+									Digest = new HashDigest(Manifest.Raw),
 								};
 
 								await Database.Insert(Image);
@@ -927,9 +883,16 @@ namespace TAG.Networking.DockerRegistry
 								else
 									Image.Tag = Tag;
 
+								byte[] Data = await Request.ReadDataAsync();
+								ContentResponse ManifestStringDecoded = await InternetContent.DecodeAsync("text/plain", Data, Request.Header.ContentType.Encoding, Request.Header.ContentType.Fields,
+									new Uri(Request.Header.GetURL(false, false)));
+
+								if (!(ManifestStringDecoded.Decoded is string ManifestString))
+									throw new InternalServerErrorException();
+
+
 								Image.Manifest = Manifest;
-								Image.Digest = Digest;
-								Image.Function = Function;
+								Image.Digest = new HashDigest(Manifest.Raw);
 
 								await Database.Update(Image);
 							}
@@ -937,7 +900,7 @@ namespace TAG.Networking.DockerRegistry
 							Log.Informational("Docker image uploaded.", Image.Image, Request.User.UserName,
 								await LoginAuditor.Annotate(Request.RemoteEndPoint,
 								new KeyValuePair<string, object>("Tag", Image.Tag),
-								new KeyValuePair<string, object>("Digest", GetDigestString(Image.Function, Image.Digest)),
+								new KeyValuePair<string, object>("Digest", Image.Digest.ToString()),
 								new KeyValuePair<string, object>("RemoteEndPoint", Request.RemoteEndPoint)));
 
 							Response.StatusCode = 201;
@@ -962,6 +925,22 @@ namespace TAG.Networking.DockerRegistry
 			{
 				await Response.SendResponse(ex);
 			}
+		}
+
+		private static string GetDigestString(Stream Data)
+		{
+			return GetDigestString(HashFunction.SHA256, Data);
+		}
+
+		private static string GetDigestString(HashFunction HashFunction, Stream Data)
+		{
+			Data.Position = 0;
+			HashDigest Digest = new HashDigest()
+			{
+				Hash = Hashes.ComputeHash(HashFunction, Data),
+				HashFunction = HashFunction,
+			};
+			return Digest.ToString();
 		}
 
 		/// <summary>
@@ -1090,39 +1069,15 @@ namespace TAG.Networking.DockerRegistry
 			return sb.ToString();
 		}
 
-		private static bool TryGetDigest(string[] Parts, out HashFunction Function, out byte[] Digest, ref int Pos)
+		private static bool TryGetDigest(string[] Parts, out HashDigest Digest, ref int Pos)
 		{
 			if (Pos != Parts.Length - 1)
 			{
-				Function = default;
 				Digest = null;
 				return false;
 			}
 			else
-				return TryParseDigest(HttpUtility.UrlDecode(Parts[Pos++]), out Function, out Digest);
-		}
-
-		private static bool TryParseDigest(string s, out HashFunction Function, out byte[] Digest)
-		{
-			Function = default;
-			Digest = null;
-
-			int i = s.IndexOf(':');
-			if (i < 0)
-				return false;
-
-			if (!Enum.TryParse(s[..i], true, out Function))
-				return false;
-
-			try
-			{
-				Digest = Hashes.StringToBinary(s[(i + 1)..]);
-				return true;
-			}
-			catch (Exception)
-			{
-				return false;
-			}
+				return HashDigest.TryParseDigest(HttpUtility.UrlDecode(Parts[Pos++]), out Digest);
 		}
 
 		private static bool TryGetKeyResourceName(string[] Parts, out string KeyResourceName, out string[] Name, ref int Pos)
@@ -1154,29 +1109,6 @@ namespace TAG.Networking.DockerRegistry
 			}
 
 			return false;
-		}
-
-		private static string GetDigestString(byte[] Digest)
-		{
-			return GetDigestString(HashFunction.SHA256, Digest);
-		}
-
-		private static string GetDigestString(HashFunction HashFunction, byte[] Digest)
-		{
-			return HashFunction.ToString().ToLower() + ":" + Hashes.BinaryToString(Digest);
-		}
-
-		private static string GetDigestString(Stream Data)
-		{
-			return GetDigestString(HashFunction.SHA256, Data);
-		}
-
-		private static string GetDigestString(HashFunction HashFunction, Stream Data)
-		{
-			Data.Position = 0;
-			byte[] Digest = Hashes.ComputeHash(HashFunction, Data);
-
-			return GetDigestString(HashFunction, Digest);
 		}
 
 		/// <summary>

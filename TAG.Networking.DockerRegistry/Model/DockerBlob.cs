@@ -1,5 +1,4 @@
 ﻿using Waher.Persistence.Attributes;
-using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry.Model
 {
@@ -8,9 +7,9 @@ namespace TAG.Networking.DockerRegistry.Model
 	/// </summary>
 	[CollectionName("DockerBlobs")]
 	[TypeName(TypeNameSerialization.None)]
-	[Index("Digest", "Function")]
-	[Index("AccountName", "Digest", "Function")]
-	[Index("Image", "Digest", "Function")]
+	[Index("Digest")]
+	[Index("AccountName", "Digest")]
+	[Index("Image", "Digest")]
 	public class DockerBlob
 	{
 		/// <summary>
@@ -27,14 +26,9 @@ namespace TAG.Networking.DockerRegistry.Model
 		public string ObjectId { get; set; }
 
 		/// <summary>
-		/// Hash function used
-		/// </summary>
-		public HashFunction Function { get; set; }
-
-		/// <summary>
 		/// Digest
 		/// </summary>
-		public byte[] Digest { get; set; }
+		public HashDigest Digest { get; set; }
 
 		/// <summary>
 		/// File name
