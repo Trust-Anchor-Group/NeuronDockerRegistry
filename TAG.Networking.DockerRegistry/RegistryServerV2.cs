@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
@@ -19,6 +20,7 @@ using Waher.Persistence;
 using Waher.Persistence.Filters;
 using Waher.Persistence.Serialization;
 using Waher.Reports.Files.Model;
+using Waher.Reports.Files.Model.Actions;
 using Waher.Runtime.Cache;
 using Waher.Script;
 using Waher.Security;
@@ -107,6 +109,38 @@ namespace TAG.Networking.DockerRegistry
 		}
 
 		/// <summary>
+		/// Folder where BLOBs are uploaded to.
+		/// </summary>
+		public string UploadFolder
+		{
+			get
+			{
+				string UploadFolder = Path.Combine(this.dockerRegistryFolder, "Uploads");
+
+				if (!Directory.Exists(UploadFolder))
+					Directory.CreateDirectory(UploadFolder);
+
+				return UploadFolder;
+			}
+		}
+
+		/// <summary>
+		/// Folder where validated uploaded BLOBs are stored.
+		/// </summary>
+		public string BlobFolder
+		{
+			get
+			{
+				string BlobFolder = Path.Combine(this.dockerRegistryFolder, "BLOBs");
+
+				if (!Directory.Exists(BlobFolder))
+					Directory.CreateDirectory(BlobFolder);
+
+				return BlobFolder;
+			}
+		}
+
+		/// <summary>
 		/// Checks if a Name is a valid Docker name.
 		/// </summary>
 		/// <param name="Name">Name</param>
@@ -154,15 +188,11 @@ namespace TAG.Networking.DockerRegistry
 					return;
 				}
 
-				string[] ResourceParts = Resource.Split('/');
-				int Pos = 0;
-				int Len = ResourceParts.Length;
+				// allow get /v2 even if you do not have access to other resources
+				if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
+					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
-				if (!string.IsNullOrEmpty(ResourceParts[Pos++]))
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-
-				if (!TryGetKeyResourceName(ResourceParts, out string KeyResourceName, out string[] Names, ref Pos))
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+				Prepare(Resource, out string[] ResourceParts, out int Pos, out int Lev, out string KeyResourceName, out string[] Names);
 
 				switch (KeyResourceName)
 				{
@@ -176,7 +206,7 @@ namespace TAG.Networking.DockerRegistry
 						{
 							Pos++;
 
-							if (!Request.User.HasPrivilege("Docker.Upload"))
+							if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
 								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 							if (Pos == ResourceParts.Length ||
@@ -239,9 +269,12 @@ namespace TAG.Networking.DockerRegistry
 								?? throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."), apiHeader);
 
 							if (!File.Exists(Blob.FileName))
+							{
+								await SyncronizeBlobFileAndRecord(Digest);
 								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."), apiHeader);
+							}
 
-							if (!Request.User.HasPrivilege("Docker.Download"))
+							if (!Request.User.HasPrivilege("DockerRegistry.Download"))
 								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 							using (FileStream BlobFile = File.OpenRead(Blob.FileName))
@@ -378,105 +411,6 @@ namespace TAG.Networking.DockerRegistry
 			}
 		}
 
-		private static void SetApiHeader(HttpResponse Response)
-		{
-			Response.SetHeader(apiHeader.Key, apiHeader.Value);
-		}
-
-		private static readonly KeyValuePair<string, string> apiHeader = new KeyValuePair<string, string>("Docker-Distribution-API-Version", "registry/2.0");
-
-		private static void SetLastHeader(HttpResponse Response, string BaseQuery, object Result, Variables Pagination)
-		{
-			if (Result is Array A)
-			{
-				int i = A.Length;
-				if (i > 0)
-				{
-					object LastItem = A.GetValue(i - 1);
-					StringBuilder sb = new StringBuilder();
-
-					sb.Append(Gateway.GetUrl(BaseQuery));
-
-					if (Pagination.TryGetVariable("N", out Variable v))
-					{
-						sb.Append("n=");
-						sb.Append(Expression.ToString(v.ValueObject));
-						sb.Append('&');
-					}
-
-					sb.Append("last=");
-					sb.Append(LastItem.ToString());
-					sb.Append("; rel=\"next\"");
-
-					Response.SetHeader("Link", sb.ToString());
-				}
-			}
-		}
-
-		private static bool IsPaginated(HttpRequest Request, out bool HasLast, out Variables Pagination, params Variable[] Variables)
-		{
-			Pagination = null;
-			HasLast = false;
-
-			if ((Variables?.Length ?? 0) > 0)
-			{
-				Pagination = new Variables();
-
-				foreach (Variable v in Variables)
-					Pagination[v.Name] = v.ValueObject;
-			}
-
-			if (Request.Header.TryGetQueryParameter("n", out string NStr))
-			{
-				if (!int.TryParse(NStr, out int N) || N < 0)
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid number of results requested."), apiHeader);
-
-				Pagination ??= new Variables();
-				Pagination["N"] = N;
-
-				if (Request.Header.TryGetQueryParameter("last", out string Last))
-				{
-					HasLast = true;
-					Pagination["Last"] = Last;
-				}
-
-				return true;
-			}
-			else
-			{
-				if (Request.Header.TryGetQueryParameter("last", out string Last))
-				{
-					HasLast = true;
-
-					Pagination ??= new Variables();
-					Pagination["Last"] = Last;
-				}
-
-				return false;
-			}
-		}
-
-		private static async Task WriteToResponse(HttpResponse Response, FileStream File, long Offset, long Count)
-		{
-			if (!Response.OnlyHeader)
-			{
-				File.Position = Offset;
-
-				byte[] Buf = new byte[65536];
-				int NrBytes;
-
-				while (Count > 0)
-				{
-					NrBytes = (int)Math.Min(65536, Count);
-
-					await File.ReadAsync(Buf, 0, NrBytes);
-					await Response.Write(false, Buf, 0, NrBytes);
-
-					Count -= NrBytes;
-				}
-			}
-		}
-
 		/// <summary>
 		/// Executes a POST method.
 		/// </summary>
@@ -488,7 +422,7 @@ namespace TAG.Networking.DockerRegistry
 			{
 				SetApiHeader(Response);
 
-				if (!Request.User.HasPrivilege("Docker.Upload"))
+				if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
 					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
@@ -559,10 +493,12 @@ namespace TAG.Networking.DockerRegistry
 			{
 				SetApiHeader(Response);
 
-				if (!Request.User.HasPrivilege("Docker.Upload"))
+				if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
 					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
+
+				HashDigest Digest;
 
 				switch (KeyResourceName)
 				{
@@ -592,12 +528,48 @@ namespace TAG.Networking.DockerRegistry
 						}
 						else
 						{
-							// TODO
-						}
-						break;
+							if (!TryGetDigest(ResourceParts, out Digest, ref Pos))
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Invalid BLOB digest reference."), apiHeader);
 
+							DockerBlob blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
+								new FilterFieldEqualTo("Digest", Digest)));
+
+							// TODO: Implement "NAME_UNKNOWN" error code. But it is not neccesary to function.
+
+							if (blob is null)
+								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."), apiHeader);
+
+							await Database.Delete(blob);
+
+							Response.StatusCode = 202;
+							Response.StatusMessage = "Accepted";
+							Response.ContentLength = 0;
+							Response.SetHeader("Docker-Content-Digest", Digest.ToString());
+							await Response.SendResponse();
+							return;
+						}
 					case "manifests":
-					// TODO
+						if (Pos >= ResourceParts.Length)
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "Manifest deletion invalid."), apiHeader);
+
+						if (!TryGetDigest(ResourceParts, out Digest, ref Pos))
+							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Invalid manifest digest reference."), apiHeader);
+
+						DockerImage image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
+							new FilterFieldEqualTo("Digest", Digest)));
+
+						if (image is null)
+							throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_INVALID, "Manifest unknown."), apiHeader);
+
+						await Database.Delete(image);
+
+						Response.StatusCode = 202;
+						Response.StatusMessage = "Accepted";
+						Response.ContentLength = 0;
+						Response.SetHeader("Docker-Content-Digest", Digest.ToString());
+
+						await Response.SendResponse();
+						return;
 					case "_catalog":
 					// TODO
 					case "tags":
@@ -636,10 +608,11 @@ namespace TAG.Networking.DockerRegistry
 			{
 				SetApiHeader(Response);
 
-				if (!Request.User.HasPrivilege("Docker.Upload"))
+				if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
 					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
+
 
 				switch (KeyResourceName)
 				{
@@ -727,7 +700,7 @@ namespace TAG.Networking.DockerRegistry
 			{
 				SetApiHeader(Response);
 
-				if (!Request.User.HasPrivilege("Docker.Upload"))
+				if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
 					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
 				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
@@ -773,8 +746,16 @@ namespace TAG.Networking.DockerRegistry
 								DockerBlob Prev = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
 									new FilterFieldEqualTo("Digest", Digest)));
 
-								if (File.Exists(ContentFileName) || !(Prev is null))
+								if (File.Exists(ContentFileName) != !(Prev is null))
+									await SyncronizeBlobFileAndRecord(Digest);
+
+								if (File.Exists(ContentFileName))
 									throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "BLOB already exists."), apiHeader);
+
+								Response.StatusCode = 201;
+								Response.StatusMessage = "Created";
+								Response.SetHeader("Location", NameUrl(Names) + "/blobs/" + DigestStr);
+								Response.SetHeader("Docker-Content-Digest", DigestStr);
 
 								using (FileStream Content = File.Create(ContentFileName))
 								{
@@ -786,6 +767,7 @@ namespace TAG.Networking.DockerRegistry
 								UploadRecord.Blob.FileName = ContentFileName;
 
 								await Database.Insert(UploadRecord.Blob);
+								await Response.SendResponse();
 							}
 							finally
 							{
@@ -816,7 +798,7 @@ namespace TAG.Networking.DockerRegistry
 
 						if (ManifestContentResponse.Decoded is OCIImageManifest OciManifest)
 							Manifest = OciManifest;
-						if (ManifestContentResponse.Decoded is DockerImageManifestV2 DockerManifestV2)
+						else if (ManifestContentResponse.Decoded is DockerImageManifestV2 DockerManifestV2)
 							Manifest = DockerManifestV2;
 						else
 							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid."), apiHeader);
@@ -824,7 +806,10 @@ namespace TAG.Networking.DockerRegistry
 						foreach (IImageLayer Layer in Manifest.GetLayers())
 						{
 							DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
-								new FilterFieldEqualTo("Digest", Layer.Digest))) ?? throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN,
+								new FilterFieldEqualTo("Digest", Layer.Digest)));
+
+							if (Blob is null)
+								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN,
 								"BLOB unknown to registry.", new Dictionary<string, object>()
 								{
 									{ "digest", Layer.Digest.ToString() }
@@ -943,35 +928,20 @@ namespace TAG.Networking.DockerRegistry
 			return Digest.ToString();
 		}
 
-		/// <summary>
-		/// Folder where BLOBs are uploaded to.
-		/// </summary>
-		public string UploadFolder
+		private async Task SyncronizeBlobFileAndRecord(HashDigest Digest)
 		{
-			get
+			DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
+				new FilterFieldEqualTo("Digest", Digest)));
+			string ContentFileName = Path.Combine(this.BlobFolder, Hashes.BinaryToString(Digest.Hash) + ".bin");
+
+			if (!File.Exists(ContentFileName) && !(Blob is null))
 			{
-				string UploadFolder = Path.Combine(this.dockerRegistryFolder, "Uploads");
-
-				if (!Directory.Exists(UploadFolder))
-					Directory.CreateDirectory(UploadFolder);
-
-				return UploadFolder;
+				await Database.Delete(Blob);
 			}
-		}
 
-		/// <summary>
-		/// Folder where validated uploaded BLOBs are stored.
-		/// </summary>
-		public string BlobFolder
-		{
-			get
+			if (File.Exists(ContentFileName) && Blob is null)
 			{
-				string BlobFolder = Path.Combine(this.dockerRegistryFolder, "BLOBs");
-
-				if (!Directory.Exists(BlobFolder))
-					Directory.CreateDirectory(BlobFolder);
-
-				return BlobFolder;
+				File.Delete(ContentFileName);
 			}
 		}
 
@@ -987,7 +957,6 @@ namespace TAG.Networking.DockerRegistry
 				UploadRecord.Blob = new DockerBlob()
 				{
 					AccountName = Request.User.UserName,
-					Image = JoinNames(Names)
 				};
 
 				UploadRecord.FileName = Path.Combine(this.UploadFolder, Uuid.ToString() + ".bin");
@@ -1111,6 +1080,105 @@ namespace TAG.Networking.DockerRegistry
 			return false;
 		}
 
+		private static void SetApiHeader(HttpResponse Response)
+		{
+			Response.SetHeader(apiHeader.Key, apiHeader.Value);
+		}
+
+		private static readonly KeyValuePair<string, string> apiHeader = new KeyValuePair<string, string>("Docker-Distribution-API-Version", "registry/2.0");
+
+		private static void SetLastHeader(HttpResponse Response, string BaseQuery, object Result, Variables Pagination)
+		{
+			if (Result is Array A)
+			{
+				int i = A.Length;
+				if (i > 0)
+				{
+					object LastItem = A.GetValue(i - 1);
+					StringBuilder sb = new StringBuilder();
+
+					sb.Append(Gateway.GetUrl(BaseQuery));
+
+					if (Pagination.TryGetVariable("N", out Variable v))
+					{
+						sb.Append("n=");
+						sb.Append(Expression.ToString(v.ValueObject));
+						sb.Append('&');
+					}
+
+					sb.Append("last=");
+					sb.Append(LastItem.ToString());
+					sb.Append("; rel=\"next\"");
+
+					Response.SetHeader("Link", sb.ToString());
+				}
+			}
+		}
+
+		private static bool IsPaginated(HttpRequest Request, out bool HasLast, out Variables Pagination, params Variable[] Variables)
+		{
+			Pagination = null;
+			HasLast = false;
+
+			if ((Variables?.Length ?? 0) > 0)
+			{
+				Pagination = new Variables();
+
+				foreach (Variable v in Variables)
+					Pagination[v.Name] = v.ValueObject;
+			}
+
+			if (Request.Header.TryGetQueryParameter("n", out string NStr))
+			{
+				if (!int.TryParse(NStr, out int N) || N < 0)
+					throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid number of results requested."), apiHeader);
+
+				Pagination ??= new Variables();
+				Pagination["N"] = N;
+
+				if (Request.Header.TryGetQueryParameter("last", out string Last))
+				{
+					HasLast = true;
+					Pagination["Last"] = Last;
+				}
+
+				return true;
+			}
+			else
+			{
+				if (Request.Header.TryGetQueryParameter("last", out string Last))
+				{
+					HasLast = true;
+
+					Pagination ??= new Variables();
+					Pagination["Last"] = Last;
+				}
+
+				return false;
+			}
+		}
+
+		private static async Task WriteToResponse(HttpResponse Response, FileStream File, long Offset, long Count)
+		{
+			if (!Response.OnlyHeader)
+			{
+				File.Position = Offset;
+
+				byte[] Buf = new byte[65536];
+				int NrBytes;
+
+				while (Count > 0)
+				{
+					NrBytes = (int)Math.Min(65536, Count);
+
+					await File.ReadAsync(Buf, 0, NrBytes);
+					await Response.Write(false, Buf, 0, NrBytes);
+
+					Count -= NrBytes;
+				}
+			}
+		}
+
 		/// <summary>
 		/// Disposes of the resource.
 		/// </summary>
@@ -1134,5 +1202,6 @@ namespace TAG.Networking.DockerRegistry
 				_ => base.DefaultErrorContent(StatusCode),
 			};
 		}
+
 	}
 }

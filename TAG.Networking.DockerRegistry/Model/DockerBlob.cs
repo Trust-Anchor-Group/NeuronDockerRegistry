@@ -39,10 +39,5 @@ namespace TAG.Networking.DockerRegistry.Model
 		/// Name of user account uploading the BLOB.
 		/// </summary>
 		public string AccountName { get; set; }
-
-		/// <summary>
-		/// Name of image to which the BLOB corresponds.
-		/// </summary>
-		public string Image { get; set; }
 	}
 }
