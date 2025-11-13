@@ -36,7 +36,7 @@ namespace TAG.Networking.DockerRegistry
 			try
 			{
 				DockerImageManifestV2 ParsedManifest = new DockerImageManifestV2(Dict);
-				ParsedManifest.Raw = Raw;
+				ParsedManifest.Raw = Data;
 				return Task.FromResult(new ContentResponse(ContentType, ParsedManifest, Data));
 			}
 			catch (Exception ex)

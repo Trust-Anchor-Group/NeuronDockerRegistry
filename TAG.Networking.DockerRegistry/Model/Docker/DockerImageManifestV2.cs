@@ -12,7 +12,7 @@ namespace TAG.Networking.DockerRegistry.Model.Docker
 		public string MediaType => MediaTypeValue;
 		public DockerImageV2Config Config { get; set; }
 		public DockerImageV2Layer[] Layers { get; set; }
-		public string Raw { get; set; }
+		public byte[] Raw { get; set; }
 
 		public DockerImageManifestV2()
 		{

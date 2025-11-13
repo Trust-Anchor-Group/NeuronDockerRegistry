@@ -36,7 +36,7 @@ namespace TAG.Networking.DockerRegistry
 			try
 			{
 				OCIImageManifest ParsedManifest = new OCIImageManifest(Dict);
-				ParsedManifest.Raw = Raw;
+				ParsedManifest.Raw = Data;
 				return Task.FromResult(new ContentResponse(ContentType, ParsedManifest, Data));
 			}
 			catch (Exception ex)

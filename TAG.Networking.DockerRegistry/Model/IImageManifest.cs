@@ -4,7 +4,7 @@
 	{
 		public int SchemaVersion { get; }
 		public string MediaType { get; }
-		public string Raw { get; set; }
+		public byte[] Raw { get; set; }
 		public IImageLayer[] GetLayers();
 		public IImageConfig GetConfig();
 	}

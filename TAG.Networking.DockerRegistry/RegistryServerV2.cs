@@ -5,1203 +5,838 @@ using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using System.Web;
+using TAG.Networking.DockerRegistry.Endpoints;
 using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
-using TAG.Networking.DockerRegistry.Model.Docker;
-using TAG.Networking.DockerRegistry.Model.Oci;
 using Waher.Content;
-using Waher.Content.Binary;
 using Waher.Events;
 using Waher.IoTGateway;
+using Waher.Networking;
 using Waher.Networking.HTTP;
-using Waher.Networking.HTTP.HeaderFields;
+using Waher.Networking.Sniffers;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
-using Waher.Persistence.Serialization;
-using Waher.Reports.Files.Model;
-using Waher.Reports.Files.Model.Actions;
-using Waher.Runtime.Cache;
 using Waher.Script;
-using Waher.Security;
-using Waher.Security.LoginMonitor;
+using Waher.Service.IoTBroker.DataStorage;
 
 namespace TAG.Networking.DockerRegistry
 {
-	/// <summary>
-	/// Docker Registry API v2.
-	/// 
-	/// Reference:
-	/// https://docs.docker.com/registry/spec/api/
-	/// </summary>
-	public class RegistryServerV2 : HttpSynchronousResource, IHttpGetMethod, IHttpGetRangesMethod, IHttpPostMethod,
-		IHttpDeleteMethod, IHttpPatchMethod, IHttpPatchRangesMethod, IHttpPutMethod, IHttpPutRangesMethod, IDisposable
-	{
-		private static readonly Regex regexName = new Regex("[a-z0-9]+(?:[._-][a-z0-9]+)*", RegexOptions.Compiled | RegexOptions.Singleline);
-		private static readonly string[] keyResourceNames = new string[]
-		{
-			"manifests",
-			"blobs",
-			"_catalog",
-			"tags"
-		};
-
-		private readonly HttpAuthenticationScheme[] authenticationSchemes;
-		private readonly Cache<Guid, BlobUpload> uploads = new Cache<Guid, BlobUpload>(int.MaxValue, TimeSpan.MaxValue, TimeSpan.FromHours(1));
-		private readonly string dockerRegistryFolder;
-
-		/// <summary>
-		/// Docker Registry API v2.
-		/// </summary>
-		/// <param name="DockerRegistryFolder">Docker Registry folder.</param>
-		/// <param name="AuthenticationSchemes">Authentication schemes.</param>
-		public RegistryServerV2(string DockerRegistryFolder, params HttpAuthenticationScheme[] AuthenticationSchemes)
-			: base("/v2")
-		{
-			this.dockerRegistryFolder = DockerRegistryFolder;
-			this.authenticationSchemes = AuthenticationSchemes;
-			this.uploads.Removed += this.Uploads_Removed;
-		}
-
-		/// <summary>
-		/// If resource handles sub-paths.
-		/// </summary>
-		public override bool HandlesSubPaths => true;
-
-		/// <summary>
-		/// If resource uses sessions (i.e. uses a session cookie).
-		/// </summary>
-		public override bool UserSessions => false;
-
-		/// <summary>
-		/// If GET method is supported.
-		/// </summary>
-		public bool AllowsGET => true;
-
-		/// <summary>
-		/// If POST method is supported.
-		/// </summary>
-		public bool AllowsPOST => true;
-
-		/// <summary>
-		/// If DELETE method is supported.
-		/// </summary>
-		public bool AllowsDELETE => true;
-
-		/// <summary>
-		/// If PUT method is supported.
-		/// </summary>
-		public bool AllowsPUT => true;
-
-		/// <summary>
-		/// If PATCH method is supported.
-		/// </summary>
-		public bool AllowsPATCH => true;
-
-		/// <summary>
-		/// Gets available authentication schemes
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <returns>Array of authentication schemes.</returns>
-		public override HttpAuthenticationScheme[] GetAuthenticationSchemes(HttpRequest Request)
-		{
-			return this.authenticationSchemes;
-		}
-
-		/// <summary>
-		/// Folder where BLOBs are uploaded to.
-		/// </summary>
-		public string UploadFolder
-		{
-			get
-			{
-				string UploadFolder = Path.Combine(this.dockerRegistryFolder, "Uploads");
-
-				if (!Directory.Exists(UploadFolder))
-					Directory.CreateDirectory(UploadFolder);
-
-				return UploadFolder;
-			}
-		}
-
-		/// <summary>
-		/// Folder where validated uploaded BLOBs are stored.
-		/// </summary>
-		public string BlobFolder
-		{
-			get
-			{
-				string BlobFolder = Path.Combine(this.dockerRegistryFolder, "BLOBs");
-
-				if (!Directory.Exists(BlobFolder))
-					Directory.CreateDirectory(BlobFolder);
-
-				return BlobFolder;
-			}
-		}
-
-		/// <summary>
-		/// Checks if a Name is a valid Docker name.
-		/// </summary>
-		/// <param name="Name">Name</param>
-		/// <returns>If <paramref name="Name"/> is a valid Docker name.</returns>
-		public static bool IsName(string Name)
-		{
-			Match M = regexName.Match(Name);
-			return M.Success && M.Index == 0 && M.Length == Name.Length;
-		}
-
-		private Task Uploads_Removed(object Sender, CacheItemEventArgs<Guid, BlobUpload> e)
-		{
-			e.Value.Dispose();
-			return Task.CompletedTask;
-		}
-
-		/// <summary>
-		/// Executes a GET method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		public Task GET(HttpRequest Request, HttpResponse Response)
-		{
-			return this.GET(Request, Response, null);
-		}
-
-		/// <summary>
-		/// Executes a GET method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		/// <param name="Interval">Range interval.</param>
-		public async Task GET(HttpRequest Request, HttpResponse Response, ByteRangeInterval Interval)
-		{
-			try
-			{
-				SetApiHeader(Response);
-
-				string Resource = Request.SubPath;
-
-				if (Resource == "/" || string.IsNullOrEmpty(Resource))  // API Version Check
-				{
-					Response.StatusCode = 200;
-					await Response.SendResponse();
-					return;
-				}
-
-				// allow get /v2 even if you do not have access to other resources
-				if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
-					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
-
-				Prepare(Resource, out string[] ResourceParts, out int Pos, out int Lev, out string KeyResourceName, out string[] Names);
-
-				switch (KeyResourceName)
-				{
-					case "blobs":
-						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
-
-						HashDigest Digest;
-
-						if (ResourceParts[Pos] == "uploads")
-						{
-							Pos++;
-
-							if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
-								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
-
-							if (Pos == ResourceParts.Length ||
-								string.IsNullOrEmpty(ResourceParts[Pos]) ||
-								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid))
-							{
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
-							}
-
-							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
-								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
-
-							await UploadRecord.Lock();
-							try
-							{
-								Response.SetHeader("Location", NameUrl(Names) + "/blobs/uploads/" + Uuid.ToString());
-								Response.SetHeader("Docker-Upload-UUID", Uuid.ToString());
-
-								if (UploadRecord.File is null || UploadRecord.File.Length == 0)
-								{
-									Response.StatusCode = 204;
-									Response.StatusMessage = "No Content";
-									Response.SetHeader("Content-Range", "0-0/0");
-								}
-								else
-								{
-									long Offset = Interval?.First ?? 0L;
-									long Count;
-
-									if (Interval is null)
-										Count = UploadRecord.File.Length;
-									else
-									{
-										long Last = Interval.Last ?? UploadRecord.File.Length - 1;
-										Count = Last - Offset + 1;
-									}
-
-									Response.StatusCode = 200;
-									Response.SetHeader("Content-Range", Offset.ToString() + "-" +
-										(Offset + Count - 1).ToString() + "/" + UploadRecord.File.Length.ToString());
-
-									await WriteToResponse(Response, UploadRecord.File, Offset, Count);
-								}
-							}
-							finally
-							{
-								UploadRecord.Release();
-							}
-
-							await Response.SendResponse();
-							return;
-						}
-						else
-						{
-							if (!TryGetDigest(ResourceParts, out Digest, ref Pos))
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
-
-							DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
-								new FilterFieldEqualTo("Digest", Digest)))
-								?? throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."), apiHeader);
-
-							if (!File.Exists(Blob.FileName))
-							{
-								await SyncronizeBlobFileAndRecord(Digest);
-								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."), apiHeader);
-							}
-
-							if (!Request.User.HasPrivilege("DockerRegistry.Download"))
-								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
-
-							using (FileStream BlobFile = File.OpenRead(Blob.FileName))
-							{
-								long Offset = Interval?.First ?? 0L;
-								long Count;
-
-								if (Interval is null)
-									Count = BlobFile.Length;
-								else
-								{
-									long Last = Interval.Last ?? BlobFile.Length - 1;
-									Count = Last - Offset + 1;
-								}
-
-								Response.StatusCode = 200;
-								Response.SetHeader("Content-Length", BlobFile.Length.ToString());
-								Response.SetHeader("Docker-Content-Digest", Blob.Digest.ToString());
-								Response.SetHeader("Content-Range", Offset.ToString() + "-" +
-									(Offset + Count - 1).ToString() + "/" + BlobFile.Length.ToString());
-
-								await WriteToResponse(Response, BlobFile, Offset, Count);
-							}
-
-							await Response.SendResponse();
-							return;
-						}
-
-					case "_catalog":
-						object Result;
-
-						if (IsPaginated(Request, out bool HasLast, out Variables Pagination))
-						{
-							if (HasLast)
-								Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages' where Image>Last", Pagination);
-							else
-								Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages'", Pagination);
-
-							SetLastHeader(Response, "/v2/_catalog?", Result, Pagination);
-						}
-						else
-						{
-							if (HasLast)
-								Result = await Expression.EvalAsync("select distinct Image from 'DockerImages' where Image>Last", Pagination);
-							else
-								Result = await Expression.EvalAsync("select distinct Image from 'DockerImages'");
-						}
-
-						Response.StatusCode = 200;
-						await Response.Return(new Dictionary<string, object>()
-						{
-							{ "repositories", Result }
-						});
-						return;
-
-					case "tags":
-						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.TAG_INVALID, "Missing tag."), apiHeader);
-
-						string Tag = ResourceParts[Pos++];
-
-						if (Tag == "list")
-						{
-							string Name = JoinNames(Names);
-
-							if (IsPaginated(Request, out HasLast, out Pagination, new Variable("Name", Name)))
-							{
-								if (HasLast)
-									Result = await Expression.EvalAsync("select top N distinct Tag from 'DockerImages' where Image=Name and Tag>Last", Pagination);
-								else
-									Result = await Expression.EvalAsync("select top N distinct Tag from 'DockerImages' where Image=Name", Pagination);
-
-								SetLastHeader(Response, "/v2/" + Name + "/tags/list?", Result, Pagination);
-							}
-							else
-							{
-								if (HasLast)
-									Result = await Expression.EvalAsync("select distinct Tag from 'DockerImages' where Image=Name and Tag>Last", Pagination);
-								else
-									Result = await Expression.EvalAsync("select distinct Tag from 'DockerImages' where Image=Name", Pagination);
-							}
-
-							Response.StatusCode = 200;
-							await Response.Return(new Dictionary<string, object>()
-							{
-								{ "name", Name },
-								{ "tags", Result }
-							});
-							return;
-						}
-						else
-						{
-							// TODO
-						}
-						break;
-
-					case "manifests":
-						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL incomplete."), apiHeader);
-
-						string Reference = ResourceParts[Pos++];
-						string ImageName = JoinNames(Names);
-						DockerImage Image;
-
-						if (HashDigest.TryParseDigest(Reference, out Digest))
-						{
-							Image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
-								new FilterFieldEqualTo("Image", ImageName),
-								new FilterFieldEqualTo("Digest", Digest)));
-						}
-						else
-						{
-							Image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
-								new FilterFieldEqualTo("Image", ImageName),
-								new FilterFieldEqualTo("Tag", Reference)));
-						}
-
-						if (Image is null)
-							throw new NotFoundException(new DockerErrors(DockerErrorCode.MANIFEST_UNKNOWN, "Manifest unknown."), apiHeader);
-
-						Request.Header.AcceptEncoding = null;
-
-						await Response.Return(Image.Manifest);
-						return;
-					default:
-						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-				}
-
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-			}
-			catch (Exception ex)
-			{
-				await Response.SendResponse(ex);
-			}
-		}
-
-		/// <summary>
-		/// Executes a POST method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		public async Task POST(HttpRequest Request, HttpResponse Response)
-		{
-			try
-			{
-				SetApiHeader(Response);
-
-				if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
-					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
-
-				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
-
-				switch (KeyResourceName)
-				{
-					case "blobs":
-						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
-
-						if (ResourceParts[Pos] == "uploads")
-						{
-							Pos++;
-
-							if (Pos == ResourceParts.Length || string.IsNullOrEmpty(ResourceParts[Pos]))
-							{
-								Pos++;
-
-								Guid Uuid = Guid.NewGuid();
-
-								this.uploads[Uuid] = new BlobUpload(Uuid);
-
-								Response.StatusCode = 202;
-								Response.StatusMessage = "Accepted";
-								Response.SetHeader("Location", NameUrl(Names) + "/blobs/uploads/" + Uuid.ToString());
-								Response.SetHeader("Range", "0-0");
-								Response.SetHeader("Docker-Upload-UUID", Uuid.ToString());
-								await Response.SendResponse();
-								return;
-							}
-							else
-							{
-								// TODO
-							}
-						}
-						else
-						{
-							// TODO
-						}
-						break;
-
-					case "manifests":
-					// TODO
-					case "_catalog":
-					// TODO
-					case "tags":
-					// TODO
-					default:
-						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-				}
-
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-			}
-			catch (Exception ex)
-			{
-				await Response.SendResponse(ex);
-			}
-		}
-
-		/// <summary>
-		/// Executes a DELETE method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		public async Task DELETE(HttpRequest Request, HttpResponse Response)
-		{
-			try
-			{
-				SetApiHeader(Response);
-
-				if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
-					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
-
-				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
-
-				HashDigest Digest;
-
-				switch (KeyResourceName)
-				{
-					case "blobs":
-						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
-
-						if (ResourceParts[Pos] == "uploads")
-						{
-							Pos++;
-
-							if (Pos == ResourceParts.Length ||
-								string.IsNullOrEmpty(ResourceParts[Pos]) ||
-								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid))
-							{
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
-							}
-
-							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
-								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
-
-							this.uploads.Remove(Uuid);
-
-							Response.StatusCode = 200;
-							await Response.SendResponse();
-							return;
-						}
-						else
-						{
-							if (!TryGetDigest(ResourceParts, out Digest, ref Pos))
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Invalid BLOB digest reference."), apiHeader);
-
-							DockerBlob blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
-								new FilterFieldEqualTo("Digest", Digest)));
-
-							// TODO: Implement "NAME_UNKNOWN" error code. But it is not neccesary to function.
-
-							if (blob is null)
-								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."), apiHeader);
-
-							await Database.Delete(blob);
-
-							Response.StatusCode = 202;
-							Response.StatusMessage = "Accepted";
-							Response.ContentLength = 0;
-							Response.SetHeader("Docker-Content-Digest", Digest.ToString());
-							await Response.SendResponse();
-							return;
-						}
-					case "manifests":
-						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "Manifest deletion invalid."), apiHeader);
-
-						if (!TryGetDigest(ResourceParts, out Digest, ref Pos))
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Invalid manifest digest reference."), apiHeader);
-
-						DockerImage image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
-							new FilterFieldEqualTo("Digest", Digest)));
-
-						if (image is null)
-							throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_INVALID, "Manifest unknown."), apiHeader);
-
-						await Database.Delete(image);
-
-						Response.StatusCode = 202;
-						Response.StatusMessage = "Accepted";
-						Response.ContentLength = 0;
-						Response.SetHeader("Docker-Content-Digest", Digest.ToString());
-
-						await Response.SendResponse();
-						return;
-					case "_catalog":
-					// TODO
-					case "tags":
-					// TODO
-					default:
-						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-				}
-
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-			}
-			catch (Exception ex)
-			{
-				await Response.SendResponse(ex);
-			}
-		}
-
-		/// <summary>
-		/// Executes a PATCH method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		public Task PATCH(HttpRequest Request, HttpResponse Response)
-		{
-			return this.PATCH(Request, Response, null);
-		}
-
-		/// <summary>
-		/// Executes a PATCH method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		/// <param name="Interval">Range interval.</param>
-		public async Task PATCH(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
-		{
-			try
-			{
-				SetApiHeader(Response);
-
-				if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
-					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
-
-				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
-
-
-				switch (KeyResourceName)
-				{
-					case "blobs":
-						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
-
-						if (ResourceParts[Pos] == "uploads")
-						{
-							Pos++;
-
-							if (Pos == ResourceParts.Length ||
-								string.IsNullOrEmpty(ResourceParts[Pos]) ||
-								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid) ||
-								!Request.HasData)
-							{
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
-							}
-
-							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
-								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
-
-							await UploadRecord.Lock();
-							try
-							{
-								await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid, Names);
-
-								Response.StatusCode = 202;
-								Response.StatusMessage = "Accepted";
-								Response.SetHeader("Location", NameUrl(Names) + "/blobs/uploads/" + Uuid.ToString());
-								Response.SetHeader("Range", "0-" + UploadRecord.File.Length.ToString());
-								Response.SetHeader("Docker-Upload-UUID", Uuid.ToString());
-								await Response.SendResponse();
-								return;
-							}
-							finally
-							{
-								UploadRecord.Release();
-							}
-						}
-						else
-						{
-							// TODO
-						}
-						break;
-
-					// TODO
-					case "manifests":
-					// TODO
-					case "_catalog":
-					// TODO
-					case "tags":
-					// TODO
-					default:
-						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-				}
-
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-			}
-			catch (Exception ex)
-			{
-				await Response.SendResponse(ex);
-			}
-		}
-
-		/// <summary>
-		/// Executes a PUT method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		public Task PUT(HttpRequest Request, HttpResponse Response)
-		{
-			return this.PUT(Request, Response, null);
-		}
-
-		/// <summary>
-		/// Executes a PUT method.
-		/// </summary>
-		/// <param name="Request">Request object.</param>
-		/// <param name="Response">Response object.</param>
-		/// <param name="Interval">Range interval.</param>
-		public async Task PUT(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
-		{
-			try
-			{
-				SetApiHeader(Response);
-
-				if (!Request.User.HasPrivilege("DockerRegistry.Upload"))
-					throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
-
-				Prepare(Request.SubPath, out string[] ResourceParts, out int Pos, out int Len, out string KeyResourceName, out string[] Names);
-
-				switch (KeyResourceName)
-				{
-					case "blobs":
-						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
-
-						string DigestStr;
-						HashDigest Digest;
-
-						if (ResourceParts[Pos] == "uploads")
-						{
-							Pos++;
-
-							if (Pos == ResourceParts.Length ||
-								string.IsNullOrEmpty(ResourceParts[Pos]) ||
-								!Guid.TryParse(ResourceParts[Pos++], out Guid Uuid))
-							{
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
-							}
-
-							if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
-								throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
-
-							await UploadRecord.Lock();
-							try
-							{
-								if (Request.HasData)
-									await this.CopyToBlobLocked(Request, Interval, UploadRecord, Uuid, Names);
-
-								if (!Request.Header.TryGetQueryParameter("digest", out DigestStr) ||
-									!HashDigest.TryParseDigest(DigestStr = HttpUtility.UrlDecode(DigestStr), out Digest) ||
-									Convert.ToBase64String(Digest.Hash) != Convert.ToBase64String(UploadRecord.ComputeDigestLocked(Digest.HashFunction)))
-								{
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
-								}
-
-								string ContentFileName = Path.Combine(this.BlobFolder, Hashes.BinaryToString(Digest.Hash) + ".bin");
-
-								DockerBlob Prev = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
-									new FilterFieldEqualTo("Digest", Digest)));
-
-								if (File.Exists(ContentFileName) != !(Prev is null))
-									await SyncronizeBlobFileAndRecord(Digest);
-
-								if (File.Exists(ContentFileName))
-									throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "BLOB already exists."), apiHeader);
-
-								Response.StatusCode = 201;
-								Response.StatusMessage = "Created";
-								Response.SetHeader("Location", NameUrl(Names) + "/blobs/" + DigestStr);
-								Response.SetHeader("Docker-Content-Digest", DigestStr);
-
-								using (FileStream Content = File.Create(ContentFileName))
-								{
-									UploadRecord.File.Position = 0;
-									await UploadRecord.File.CopyToAsync(Content);
-								}
-
-								UploadRecord.Blob.Digest = Digest;
-								UploadRecord.Blob.FileName = ContentFileName;
-
-								await Database.Insert(UploadRecord.Blob);
-								await Response.SendResponse();
-							}
-							finally
-							{
-								UploadRecord.Release();
-							}
-
-							this.uploads.Remove(Uuid);
-
-							Response.StatusCode = 201;
-							Response.StatusMessage = "Created";
-							Response.SetHeader("Location", NameUrl(Names) + "/blobs/" + DigestStr);
-							Response.SetHeader("Docker-Content-Digest", DigestStr);
-							await Response.SendResponse();
-							return;
-						}
-						break;
-
-					case "manifests":
-						if (Pos >= ResourceParts.Length)
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. URL incomplete."), apiHeader);
-
-						string Reference = ResourceParts[Pos++];
-						ContentResponse ManifestContentResponse = await Request.DecodeDataAsync();
-						string ImageName = JoinNames(Names);
-						string Tag = null;
-
-						IImageManifest Manifest;
-
-						if (ManifestContentResponse.Decoded is OCIImageManifest OciManifest)
-							Manifest = OciManifest;
-						else if (ManifestContentResponse.Decoded is DockerImageManifestV2 DockerManifestV2)
-							Manifest = DockerManifestV2;
-						else
-							throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid."), apiHeader);
-
-						foreach (IImageLayer Layer in Manifest.GetLayers())
-						{
-							DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
-								new FilterFieldEqualTo("Digest", Layer.Digest)));
-
-							if (Blob is null)
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN,
-								"BLOB unknown to registry.", new Dictionary<string, object>()
-								{
-									{ "digest", Layer.Digest.ToString() }
-								}), apiHeader);
-						}
-
-						if (HashDigest.TryParseDigest(Reference, out Digest))
-						{
-							if (!(Digest != Manifest.GetConfig().Digest))
-								throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Digest mismatch."), apiHeader);
-						}
-						else
-							Tag = Reference;
-
-						if (Pos == ResourceParts.Length)
-						{
-							DockerImage Image;
-
-							if (string.IsNullOrEmpty(Tag))
-							{
-								Image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
-									new FilterFieldEqualTo("Image", ImageName),
-									new FilterFieldEqualTo("Digest", Digest)));
-
-								if (!(Image is null))
-									Tag = Image.Tag;
-								else
-									throw new BadRequestException(new DockerErrors(DockerErrorCode.MANIFEST_INVALID, "Manifest invalid. Missing tag."), apiHeader);
-							}
-							else
-							{
-								Image = await Database.FindFirstIgnoreRest<DockerImage>(new FilterAnd(
-									new FilterFieldEqualTo("Image", ImageName),
-									new FilterFieldEqualTo("Tag", Tag)));
-							}
-
-							if (Image is null)
-							{
-								Image = new DockerImage()
-								{
-									AccountName = Request.User.UserName,
-									Image = ImageName,
-									Tag = Tag,
-									Manifest = Manifest,
-									Digest = new HashDigest(Manifest.Raw),
-								};
-
-								await Database.Insert(Image);
-							}
-							else if (Image.AccountName != Request.User.UserName)
-								throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
-							else
-							{
-								if (string.IsNullOrEmpty(Tag))
-									Tag = Image.Tag;
-								else
-									Image.Tag = Tag;
-
-								byte[] Data = await Request.ReadDataAsync();
-								ContentResponse ManifestStringDecoded = await InternetContent.DecodeAsync("text/plain", Data, Request.Header.ContentType.Encoding, Request.Header.ContentType.Fields,
-									new Uri(Request.Header.GetURL(false, false)));
-
-								if (!(ManifestStringDecoded.Decoded is string ManifestString))
-									throw new InternalServerErrorException();
-
-
-								Image.Manifest = Manifest;
-								Image.Digest = new HashDigest(Manifest.Raw);
-
-								await Database.Update(Image);
-							}
-
-							Log.Informational("Docker image uploaded.", Image.Image, Request.User.UserName,
-								await LoginAuditor.Annotate(Request.RemoteEndPoint,
-								new KeyValuePair<string, object>("Tag", Image.Tag),
-								new KeyValuePair<string, object>("Digest", Image.Digest.ToString()),
-								new KeyValuePair<string, object>("RemoteEndPoint", Request.RemoteEndPoint)));
-
-							Response.StatusCode = 201;
-							Response.StatusMessage = "Created";
-							Response.SetHeader("Docker-Content-Digest", GetDigestString(Request.DataStream));
-							await Response.SendResponse();
-							return;
-						}
-						break;
-
-					case "_catalog":
-					// TODO
-					case "tags":
-					// TODO
-					default:
-						throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-				}
-
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-			}
-			catch (Exception ex)
-			{
-				await Response.SendResponse(ex);
-			}
-		}
-
-		private static string GetDigestString(Stream Data)
-		{
-			return GetDigestString(HashFunction.SHA256, Data);
-		}
-
-		private static string GetDigestString(HashFunction HashFunction, Stream Data)
-		{
-			Data.Position = 0;
-			HashDigest Digest = new HashDigest()
-			{
-				Hash = Hashes.ComputeHash(HashFunction, Data),
-				HashFunction = HashFunction,
-			};
-			return Digest.ToString();
-		}
-
-		private async Task SyncronizeBlobFileAndRecord(HashDigest Digest)
-		{
-			DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
-				new FilterFieldEqualTo("Digest", Digest)));
-			string ContentFileName = Path.Combine(this.BlobFolder, Hashes.BinaryToString(Digest.Hash) + ".bin");
-
-			if (!File.Exists(ContentFileName) && !(Blob is null))
-			{
-				await Database.Delete(Blob);
-			}
-
-			if (File.Exists(ContentFileName) && Blob is null)
-			{
-				File.Delete(ContentFileName);
-			}
-		}
-
-		private async Task CopyToBlobLocked(HttpRequest Request, ContentByteRangeInterval Interval, BlobUpload UploadRecord, Guid Uuid, string[] Names)
-		{
-			Request.DataStream.Position = 0;
-
-			long Offset = Interval?.First ?? 0L;
-			long Count = Interval is null ? Request.DataStream.Length : Interval.Last - Interval.First + 1;
-
-			if (UploadRecord.Blob is null)
-			{
-				UploadRecord.Blob = new DockerBlob()
-				{
-					AccountName = Request.User.UserName,
-				};
-
-				UploadRecord.FileName = Path.Combine(this.UploadFolder, Uuid.ToString() + ".bin");
-
-				if (File.Exists(UploadRecord.FileName))
-					UploadRecord.File = File.OpenWrite(UploadRecord.FileName);
-				else
-					UploadRecord.File = File.Create(UploadRecord.FileName);
-			}
-
-			if (UploadRecord.File.Length < Offset)
-			{
-				byte[] Buf = new byte[65536];
-
-				UploadRecord.File.Position = UploadRecord.File.Length;
-
-				while (UploadRecord.File.Length < Offset)
-				{
-					int NrBytes = (int)Math.Min(65536, Offset - UploadRecord.File.Length);
-					await UploadRecord.File.WriteAsync(Buf, 0, NrBytes);
-				}
-			}
-			else
-				UploadRecord.File.Position = Offset;
-
-			while (Count > 0)
-			{
-				int NrBytes = (int)Math.Min(65536, Count);
-				await Request.DataStream.CopyToAsync(UploadRecord.File, NrBytes);
-				Count -= NrBytes;
-			}
-		}
-
-		private static void Prepare(string Resource, out string[] ResourceParts, out int Pos, out int Len,
-			out string KeyResourceName, out string[] Names)
-		{
-			if (Resource == "/" || string.IsNullOrEmpty(Resource))  // API Version Check
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-
-			ResourceParts = Resource.Split('/');
-			Len = ResourceParts.Length;
-			Pos = 0;
-
-			if (!string.IsNullOrEmpty(ResourceParts[Pos++]))
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-
-			if (!TryGetKeyResourceName(ResourceParts, out KeyResourceName, out Names, ref Pos))
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
-		}
-
-		private static string NameUrl(string[] Names)
-		{
-			StringBuilder sb = new StringBuilder("/v2");
-
-			foreach (string Name in Names)
-			{
-				sb.Append('/');
-				sb.Append(Name);
-			}
-
-			return sb.ToString();
-		}
-
-		private static string JoinNames(string[] Names)
-		{
-			StringBuilder sb = new StringBuilder();
-			bool First = true;
-
-			foreach (string Name in Names)
-			{
-				if (First)
-					First = false;
-				else
-					sb.Append('/');
-
-				sb.Append(Name);
-			}
-
-			return sb.ToString();
-		}
-
-		private static bool TryGetDigest(string[] Parts, out HashDigest Digest, ref int Pos)
-		{
-			if (Pos != Parts.Length - 1)
-			{
-				Digest = null;
-				return false;
-			}
-			else
-				return HashDigest.TryParseDigest(HttpUtility.UrlDecode(Parts[Pos++]), out Digest);
-		}
-
-		private static bool TryGetKeyResourceName(string[] Parts, out string KeyResourceName, out string[] Name, ref int Pos)
-		{
-			KeyResourceName = null;
-			Name = null;
-
-			int Len = Parts.Length;
-			if (Pos >= Len)
-				return false;
-
-			List<string> Names = new List<string>();
-
-			while (Pos < Len)
-			{
-				string s = Parts[Pos++];
-				int i = Array.IndexOf(keyResourceNames, s);
-				if (i >= 0)
-				{
-					KeyResourceName = s;
-					Name = Names.ToArray();
-					return true;
-				}
-
-				if (!IsName(s))
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.NAME_INVALID, "Invalid repository name."), apiHeader);
-
-				Names.Add(s);
-			}
-
-			return false;
-		}
-
-		private static void SetApiHeader(HttpResponse Response)
-		{
-			Response.SetHeader(apiHeader.Key, apiHeader.Value);
-		}
-
-		private static readonly KeyValuePair<string, string> apiHeader = new KeyValuePair<string, string>("Docker-Distribution-API-Version", "registry/2.0");
-
-		private static void SetLastHeader(HttpResponse Response, string BaseQuery, object Result, Variables Pagination)
-		{
-			if (Result is Array A)
-			{
-				int i = A.Length;
-				if (i > 0)
-				{
-					object LastItem = A.GetValue(i - 1);
-					StringBuilder sb = new StringBuilder();
-
-					sb.Append(Gateway.GetUrl(BaseQuery));
-
-					if (Pagination.TryGetVariable("N", out Variable v))
-					{
-						sb.Append("n=");
-						sb.Append(Expression.ToString(v.ValueObject));
-						sb.Append('&');
-					}
-
-					sb.Append("last=");
-					sb.Append(LastItem.ToString());
-					sb.Append("; rel=\"next\"");
-
-					Response.SetHeader("Link", sb.ToString());
-				}
-			}
-		}
-
-		private static bool IsPaginated(HttpRequest Request, out bool HasLast, out Variables Pagination, params Variable[] Variables)
-		{
-			Pagination = null;
-			HasLast = false;
-
-			if ((Variables?.Length ?? 0) > 0)
-			{
-				Pagination = new Variables();
-
-				foreach (Variable v in Variables)
-					Pagination[v.Name] = v.ValueObject;
-			}
-
-			if (Request.Header.TryGetQueryParameter("n", out string NStr))
-			{
-				if (!int.TryParse(NStr, out int N) || N < 0)
-					throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid number of results requested."), apiHeader);
-
-				Pagination ??= new Variables();
-				Pagination["N"] = N;
-
-				if (Request.Header.TryGetQueryParameter("last", out string Last))
-				{
-					HasLast = true;
-					Pagination["Last"] = Last;
-				}
-
-				return true;
-			}
-			else
-			{
-				if (Request.Header.TryGetQueryParameter("last", out string Last))
-				{
-					HasLast = true;
-
-					Pagination ??= new Variables();
-					Pagination["Last"] = Last;
-				}
-
-				return false;
-			}
-		}
-
-		private static async Task WriteToResponse(HttpResponse Response, FileStream File, long Offset, long Count)
-		{
-			if (!Response.OnlyHeader)
-			{
-				File.Position = Offset;
-
-				byte[] Buf = new byte[65536];
-				int NrBytes;
-
-				while (Count > 0)
-				{
-					NrBytes = (int)Math.Min(65536, Count);
-
-					await File.ReadAsync(Buf, 0, NrBytes);
-					await Response.Write(false, Buf, 0, NrBytes);
-
-					Count -= NrBytes;
-				}
-			}
-		}
-
-		/// <summary>
-		/// Disposes of the resource.
-		/// </summary>
-		public void Dispose()
-		{
-			this.uploads.Clear();
-			this.uploads.Dispose();
-		}
-
-		/// <summary>
-		/// Returns Docker Registry error content for common HTTP error codes (if not provided by resource).
-		/// </summary>
-		/// <param name="StatusCode">HTTP Status code to return.</param>
-		/// <returns>Custom content, or null if none.</returns>
-		public override Task<object> DefaultErrorContent(int StatusCode)
-		{
-			return StatusCode switch
-			{
-				429 => Task.FromResult<object>(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied due to rate limitations.")),
-				401 => Task.FromResult<object>(new DockerErrors(DockerErrorCode.UNAUTHORIZED, "Authentication required.")),
-				_ => base.DefaultErrorContent(StatusCode),
-			};
-		}
-
-	}
+    /// <summary>
+    /// Docker Registry API v2.
+    /// 
+    /// Reference:
+    /// https://docs.docker.com/registry/spec/api/
+    /// </summary>
+    public class RegistryServerV2 : HttpSynchronousResource, IHttpGetMethod, IHttpGetRangesMethod, IHttpPostMethod,
+        IHttpDeleteMethod, IHttpPatchMethod, IHttpPatchRangesMethod, IHttpPutMethod, IHttpPutRangesMethod, IDisposable
+    {
+        private static readonly Regex regexName = new Regex("[a-z0-9]+(?:[._-][a-z0-9]+)*", RegexOptions.Compiled | RegexOptions.Singleline);
+        private static readonly KeyValuePair<string, string> apiHeader = new KeyValuePair<string, string>("Docker-Distribution-API-Version", "registry/2.0");
+
+        /// <summary>
+        /// Sniffable object that can be sniffed on dynamically.
+        /// </summary>
+        private static readonly CommunicationLayer observable = new CommunicationLayer(false);
+
+        /// <summary>
+        /// Sniffer proxy, forwarding sniffer events to <see cref="observable"/>.
+        /// </summary>
+        private static readonly SnifferProxy snifferProxy = new SnifferProxy(observable);
+
+        private readonly HttpAuthenticationScheme[] authenticationSchemes;
+        private readonly string dockerRegistryFolder;
+        private BlobStorage blobStorage;
+        private ManifestEndpoints manifestEndpoints;
+        private BlobEndpoints blobEndpoints;
+        private BlobUploadEndpoints blobUploadEndpoints;
+        private TagsEndpoints tagsEndpoints;
+        /// <summary>
+        /// Docker Registry API v2.
+        /// </summary>
+        /// <param name="DockerRegistryFolder">Docker Registry folder.</param>
+        /// <param name="AuthenticationSchemes">Authentication schemes.</param>
+        public RegistryServerV2(string DockerRegistryFolder, params HttpAuthenticationScheme[] AuthenticationSchemes)
+            : base("/v2")
+        {
+            this.dockerRegistryFolder = DockerRegistryFolder;
+            this.authenticationSchemes = AuthenticationSchemes;
+            this.blobStorage = new BlobStorage(BlobFolder);
+            manifestEndpoints = new ManifestEndpoints(this.dockerRegistryFolder);
+            blobEndpoints = new BlobEndpoints(this.dockerRegistryFolder, blobStorage);
+            blobUploadEndpoints = new BlobUploadEndpoints(this.dockerRegistryFolder, this.blobStorage);
+            tagsEndpoints = new TagsEndpoints(this.dockerRegistryFolder);
+        }
+
+        /// <summary>
+        /// If resource handles sub-paths.
+        /// </summary>
+        public override bool HandlesSubPaths => true;
+
+        /// <summary>
+        /// If resource uses sessions (i.e. uses a session cookie).
+        /// </summary>
+        public override bool UserSessions => false;
+
+        /// <summary>
+        /// If GET method is supported.
+        /// </summary>
+        public bool AllowsGET => true;
+
+        /// <summary>
+        /// If POST method is supported.
+        /// </summary>
+        public bool AllowsPOST => true;
+
+        /// <summary>
+        /// If DELETE method is supported.
+        /// </summary>
+        public bool AllowsDELETE => true;
+
+        /// <summary>
+        /// If PUT method is supported.
+        /// </summary>
+        public bool AllowsPUT => true;
+
+        /// <summary>
+        /// If PATCH method is supported.
+        /// </summary>
+        public bool AllowsPATCH => true;
+
+        /// <summary>
+        /// Auto create repositories.
+        /// </summary>
+        public bool AutoCreateRepositories => true;
+
+        /// <summary>
+        /// Auto create users.
+        /// </summary>
+        public bool AutoCreateUsers => true;
+
+        /// <summary>
+        /// Gets available authentication schemes
+        /// </summary>
+        /// <param name="Request">Request object.</param>
+        /// <returns>Array of authentication schemes.</returns>
+        public override HttpAuthenticationScheme[] GetAuthenticationSchemes(HttpRequest Request)
+        {
+            return this.authenticationSchemes;
+        }
+
+
+        /// <summary>
+        /// Folder where validated uploaded BLOBs are stored.
+        /// </summary>
+        public string BlobFolder
+        {
+            get
+            {
+                string BlobFolder = Path.Combine(this.dockerRegistryFolder, "BLOBs");
+
+                if (!Directory.Exists(BlobFolder))
+                    Directory.CreateDirectory(BlobFolder);
+
+                return BlobFolder;
+            }
+        }
+
+        /// <summary>
+        /// Checks if a Name is a valid Docker name.
+        /// </summary>
+        /// <param name="Name">Name</param>
+        /// <returns>If <paramref name="Name"/> is a valid Docker name.</returns>
+        public static bool IsName(string Name)
+        {
+            Match M = regexName.Match(Name);
+            return M.Success && M.Index == 0 && M.Length == Name.Length;
+        }
+
+        /// <summary>
+        /// Executes a GET method.
+        /// </summary>
+        /// <param name="Request">Request object.</param>
+        /// <param name="Response">Response object.</param>
+        public async Task GET(HttpRequest Request, HttpResponse Response)
+        {
+            await GET(Request, Response, null);
+        }
+
+        /// <summary>
+        /// Executes a GET method.
+        /// </summary>
+        /// <param name="Request">Request object.</param>
+        /// <param name="Response">Response object.</param>
+        /// <param name="Interval">Range interval.</param>
+        public async Task GET(HttpRequest Request, HttpResponse Response, ByteRangeInterval Interval)
+        {
+            try
+            {
+                SetApiHeader(Response);
+
+                string Resource = Request.SubPath;
+
+                if (Resource == "/" || string.IsNullOrEmpty(Resource))  // API Version Check
+                {
+                    Response.StatusCode = 200;
+                    await Response.SendResponse();
+                    return;
+                }
+
+                Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
+                DockerRepository Repository = await GetRepository(Request, RepositoryName);
+                IDockerActor Actor = await GetEffectiveActor(Request, Repository);
+
+                if (Repository == null)
+                    throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
+
+                Sniff(ApiResource, Actor, Repository, ReferenceString);
+                switch (ApiResource)
+                {
+                    case "/blobs":
+                        await blobEndpoints.GET(Request, Response, Interval, Actor, Repository, ReferenceString);
+                        return;
+                    case "/blobs/uploads":
+                        await blobUploadEndpoints.GET(Request, Response, Interval, Actor, Repository, ReferenceString);
+                        return;
+                    case "/tags":
+                        await tagsEndpoints.GET(Request, Response, Actor, Repository, ReferenceString);
+                        return;
+                    case "/manifests":
+                        await manifestEndpoints.GET(Request, Response, Actor, Repository, ReferenceString);
+                        return;
+                    case "/_catalog":
+                        // TODO: make only listp public 
+                        object Result;
+                        if (IsPaginated(Request, out bool HasLast, out Variables Pagination))
+                        {
+                            if (HasLast)
+                                Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages' where Image>Last", Pagination);
+                            else
+                                Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages'", Pagination);
+
+                            SetLastHeader(Response, "/v2/_catalog?", Result, Pagination);
+                        }
+                        else
+                        {
+                            if (HasLast)
+                                Result = await Expression.EvalAsync("select distinct Image from 'DockerImages' where Image>Last", Pagination);
+                            else
+                                Result = await Expression.EvalAsync("select distinct Image from 'DockerImages'");
+                        }
+
+                        Response.StatusCode = 200;
+                        await Response.Return(new Dictionary<string, object>()
+                        {
+                            { "repositories", Result }
+                        });
+                        return;
+                    default:
+                        throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+                }
+
+                throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+            }
+            catch (HttpException ex)
+            {
+                if (ex.StatusCode >= 500)
+                    Log.Error(ex);
+                await Response.SendResponse(ex);
+            }
+            catch (Exception ex)
+            {
+                Log.Error(ex);
+                await Response.SendResponse(ex);
+            }
+        }
+
+        /// <summary>
+        /// Executes a POST method.
+        /// </summary>
+        /// <param name="Request">Request object.</param>
+        /// <param name="Response">Response object.</param>
+        public async Task POST(HttpRequest Request, HttpResponse Response)
+        {
+            try
+            {
+                SetApiHeader(Response);
+
+                Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
+                DockerRepository Repository = await GetRepository(Request, RepositoryName);
+                IDockerActor Actor = await GetEffectiveActor(Request, Repository);
+
+                if (Repository == null)
+                    throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
+
+                Sniff(ApiResource, Actor, Repository, ReferenceString);
+                switch (ApiResource)
+                {
+                    case "/blobs/uploads":
+                        await blobUploadEndpoints.POST(Request, Response, Actor, Repository, ReferenceString);
+                        return;
+                    default:
+                        throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+                }
+
+                throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+            }
+            catch (Exception ex)
+            {
+                await Response.SendResponse(ex);
+            }
+        }
+
+        /// <summary>
+        /// Executes a DELETE method.
+        /// </summary>
+        /// <param name="Request">Request object.</param>
+        /// <param name="Response">Response object.</param>
+        public async Task DELETE(HttpRequest Request, HttpResponse Response)
+        {
+            try
+            {
+                SetApiHeader(Response);
+
+                Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
+                DockerRepository Repository = await GetRepository(Request, RepositoryName);
+                IDockerActor Actor = await GetEffectiveActor(Request, Repository);
+
+                if (Repository == null)
+                    throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
+
+                Sniff(ApiResource, Actor, Repository, ReferenceString);
+                switch (ApiResource)
+                {
+                    case "/blobs/uploads":
+                        await blobUploadEndpoints.DELETE(Request, Response, Actor, Repository, ReferenceString);
+                        return;
+                    case "/blobs":
+                        await blobEndpoints.DELETE(Request, Response, Actor, Repository, ReferenceString);
+                        return;
+                    case "/manifests":
+                        await manifestEndpoints.DELETE(Request, Response, Actor, Repository, ReferenceString);
+                        return;
+                    case "/_catalog":
+                    // TODO
+                    case "/tags":
+                    // TODO
+                    default:
+                        throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+                }
+
+                throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+            }
+            catch (Exception ex)
+            {
+                await Response.SendResponse(ex);
+            }
+        }
+
+        /// <summary>
+        /// Executes a PATCH method.
+        /// </summary>
+        /// <param name="Request">Request object.</param>
+        /// <param name="Response">Response object.</param>
+        public Task PATCH(HttpRequest Request, HttpResponse Response)
+        {
+            return this.PATCH(Request, Response, null);
+        }
+
+        /// <summary>
+        /// Executes a PATCH method.
+        /// </summary>
+        /// <param name="Request">Request object.</param>
+        /// <param name="Response">Response object.</param>
+        /// <param name="Interval">Range interval.</param>
+        public async Task PATCH(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
+        {
+            try
+            {
+                SetApiHeader(Response);
+
+                Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
+                DockerRepository Repository = await GetRepository(Request, RepositoryName);
+                IDockerActor Actor = await GetEffectiveActor(Request, Repository);
+
+                if (Repository == null)
+                    throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
+
+                Sniff(ApiResource, Actor, Repository, ReferenceString);
+                switch (ApiResource)
+                {
+                    case "/blobs/uploads":
+                        await blobUploadEndpoints.PATCH(Request, Response, Interval, Actor, Repository, ReferenceString);
+                        return;
+                    case "/blobs":
+                    // TODO
+                    case "/manifests":
+                    // TODO
+                    case "/_catalog":
+                    // TODO
+                    case "/tags":
+                    // TODO
+                    default:
+                        throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+                }
+
+                throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+            }
+            catch (Exception ex)
+            {
+                await Response.SendResponse(ex);
+            }
+        }
+
+        /// <summary>
+        /// Executes a PUT method.
+        /// </summary>
+        /// <param name="Request">Request object.</param>
+        /// <param name="Response">Response object.</param>
+        public Task PUT(HttpRequest Request, HttpResponse Response)
+        {
+            return this.PUT(Request, Response, null);
+        }
+
+        /// <summary>
+        /// Executes a PUT method.
+        /// </summary>
+        /// <param name="Request">Request object.</param>
+        /// <param name="Response">Response object.</param>
+        /// <param name="Interval">Range interval.</param>
+        public async Task PUT(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval)
+        {
+            try
+            {
+                SetApiHeader(Response);
+
+                Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
+                DockerRepository Repository = await GetRepository(Request, RepositoryName);
+                IDockerActor Actor = await GetEffectiveActor(Request, Repository);
+
+                if (Repository == null)
+                    throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
+
+                Sniff(ApiResource, Actor, Repository, ReferenceString);
+                switch (ApiResource)
+                {
+                    case "/blobs/uploads":
+                        await blobUploadEndpoints.PUT(Request, Response, Interval, Actor, Repository, ReferenceString);
+                        return;
+                    case "/manifests":
+                        await manifestEndpoints.PUT(Request, Response, Actor, Repository, ReferenceString);
+                        return;
+                    case "/_catalog":
+                    // TODO
+                    case "/tags":
+                    // TODO
+                    default:
+                        throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+                }
+
+                throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+            }
+            catch (Exception ex)
+            {
+                await Response.SendResponse(ex);
+            }
+        }
+
+        #region Docker Data Retrival
+        private async Task<DockerUser> GetDockerUser(Account Account)
+        {
+            DockerUser User = await Database.FindFirstIgnoreRest<DockerUser>(new FilterAnd(new FilterFieldEqualTo("AccountName", Account.UserName)));
+            return User;
+        }
+
+        private async Task<DockerOrganization> GetOrganizationUser(Account Account)
+        {
+            DockerOrganization Org = await Database.FindFirstIgnoreRest<DockerOrganization>(new FilterAnd(new FilterFieldEqualTo("OrganizationName", Account.OrgName)));
+            return Org;
+        }
+
+        private async Task<IDockerActor[]> GetActors(HttpRequest Request)
+        {
+            if (!(Request.User is AccountUser AccountUser))
+                throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
+
+            Account Account = AccountUser.Account;
+
+            List<IDockerActor> Actors = new List<IDockerActor>();
+
+            DockerUser User = await GetDockerUser(Account);
+            if (!(User is null))
+                Actors.Add(User);
+
+            DockerOrganization Organization = await GetOrganizationUser(Account);
+            if (!(Organization is null))
+                Actors.Add(Organization);
+
+            return Actors.ToArray();
+        }
+
+        private async Task<IDockerActor> GetEffectiveActor(HttpRequest Request, DockerRepository Repository)
+        {
+            IDockerActor[] Actors = await GetActors(Request);
+
+            if (Actors.Length == 0)
+                throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
+
+            if (Actors.Length == 1)
+                return Actors[0];
+
+            IDockerActor Chosen = Actors[0];
+
+            for (int i = 1; i < Actors.Length; i++)
+            {
+                IDockerActor Other = Actors[i];
+
+                switch (Repository.OwnerType)
+                {
+                    case DockerActorType.User:
+                        if (Other is DockerUser User && User.Guid == Repository.OwnerGuid)
+                            Chosen = User;
+                        break;
+                    case DockerActorType.Organization:
+                        if (Other is DockerOrganization Organization && Organization.Guid == Repository.OwnerGuid)
+                            Chosen = Organization;
+                        break;
+                    default:
+                        continue;
+                }
+
+            }
+
+            return Chosen;
+        }
+
+        private async Task<DockerRepository> GetRepository(HttpRequest Request, string RepositoryName)
+        {
+            DockerRepository Repository = await Database.FindFirstIgnoreRest<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("RepositoryName", RepositoryName)));
+
+            if (Repository == null && AutoCreateRepositories)
+            {
+                return null;
+                //throw new System.NotImplementedException("race conditions might apperer, and i dont know how to make unique feild in the obj database");
+                string Owner = Request.User.UserName;
+                string RepositoryBase = Owner + "/";
+
+                if (!RepositoryName.StartsWith(RepositoryBase))
+                    throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
+
+                IDockerActor[] Actors = await GetActors(Request);
+
+                foreach (IDockerActor Actor in Actors)
+                {
+                    if (Actor is DockerUser DockerUser)
+                    {
+                        Repository = new DockerRepository(RepositoryName, DockerUser);
+                        await Database.Insert(Repository);
+                        break;
+                    }
+                }
+            }
+
+            return Repository;
+        }
+        #endregion
+
+        #region Cleanup Methods
+        public async Task<int> CleanUnusedBlobs()
+        {
+            return await blobStorage.CleanUnusedBlobs();
+        }
+
+        public async Task<int> CleanUnmanagedRepositories()
+        {
+            Log.Informational("Cleaning unmanaged repositories...");
+
+            List<DockerRepository> Repositories = (await Database.Find<DockerRepository>()).ToList();
+
+            for (int i = Repositories.Count - 1; i >= 0; i--)
+            {
+                DockerRepository Repository = Repositories[i];
+                if (!((await Repository.GetOwner()) is null))
+                {
+                    Repositories.RemoveAt(i);
+                }
+            }
+
+            Task[] DeletionTasks = new Task[Repositories.Count];
+
+            for (int i = 0; i < Repositories.Count; i++)
+            {
+                try
+                {
+                    int ci = i;
+                    DeletionTasks[i] = Task.Run(async () =>
+                    {
+                        await Database.FindDelete<DockerImage>(new FilterAnd(new FilterFieldEqualTo("RepositoryName", Repositories[ci].RepositoryName)));
+                        await Database.Delete(Repositories[ci]);
+                    });
+                }
+                catch (Exception ex)
+                {
+                    Log.Error(ex);
+                    continue;
+                }
+            }
+
+            int Deletions = 0;
+
+            for (int i = 0; i < DeletionTasks.Length; i++)
+            {
+                Task DeletionTask = DeletionTasks[i];
+                if (DeletionTask is null)
+                    continue;
+
+                try
+                {
+                    await DeletionTask;
+                    Deletions++;
+                }
+                catch (Exception ex)
+                {
+                    Log.Exception(ex);
+                }
+            }
+
+            Log.Informational("Docker Registry cleaned, " + Deletions + " repositories removed");
+            return Deletions;
+        }
+        #endregion
+
+        #region Http Helpers
+        private static void Prepare(HttpRequest Request, out string RepositoryName, out string ApiResource, out string ReferenceString)
+        {
+            List<string> Portions = Request.SubPath.Split("/", StringSplitOptions.RemoveEmptyEntries).ToList();
+            List<string> ApiResourceList = new List<string>();
+
+            RepositoryName = null;
+
+            if (Portions.Count == 0)
+            {
+                ApiResource = "/";
+                ReferenceString = null;
+                return;
+            }
+
+            if (Portions.Count == 1 && Portions[0] == "_catalog")
+            {
+                ApiResource = "/_catalog";
+                ReferenceString = null;
+                return;
+            }
+
+            List<string> RepositoryNames = new List<string>();
+
+            // Get repository name
+            while (Portions.Count() > 0)
+            {
+                if (Portions[0] == "manifests" || Portions[0] == "blobs" || Portions[0] == "tags")
+                {
+                    if (RepositoryName == String.Empty)
+                        throw new BadRequestException(new DockerError(DockerErrorCode.NAME_INVALID, "Repository name cannot start with \"manifests\", \"blobs\", or \"tags\""), apiHeader);
+                    break;
+                }
+                RepositoryNames.Add(Portions[0]);
+                Portions.RemoveAt(0);
+            }
+
+            RepositoryName = string.Join("/", RepositoryNames);
+
+            if (string.IsNullOrEmpty(RepositoryName))
+                throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
+
+            if (!DockerRepository.ValidateRepositoryName(RepositoryName))
+                throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_INVALID, "Invalid repository name."), apiHeader);
+
+            // get resource name
+            while (Portions.Count() > 0)
+            {
+                if (ApiResourceList.Count() == 0)
+                {
+                    if (Portions[0] == "manifests" || Portions[0] == "blobs" || Portions[0] == "tags")
+                    {
+                        ApiResourceList.Add(Portions[0]);
+                        Portions.RemoveAt(0);
+                        continue;
+                    }
+                }
+                else if (ApiResourceList.Count() == 1)
+                {
+                    if (Portions[0] == "uploads" || Portions[0] == "list")
+                    {
+                        ApiResourceList.Add(Portions[0]);
+                        Portions.RemoveAt(0);
+                        continue;
+                    }
+                }
+                break;
+            }
+
+            ApiResource = "/" + String.Join('/', ApiResourceList);
+
+            if (
+                ApiResource != "/manifests" &&
+                ApiResource != "/blobs" &&
+                ApiResource != "/blobs/uploads" &&
+                ApiResource != "/tags/list"
+                )
+                throw new BadRequestException(new DockerError(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+
+
+            if (Portions.Count() > 1)
+                throw new BadRequestException(new DockerError(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
+
+            ReferenceString = Portions.Count() > 0 ? Portions[0] : null; // either tag, digest or upload uuid
+        }
+        private static void SetApiHeader(HttpResponse Response)
+        {
+            Response.SetHeader(apiHeader.Key, apiHeader.Value);
+        }
+
+
+
+
+        public static void SetLastHeader(HttpResponse Response, string BaseQuery, object Result, Variables Pagination)
+        {
+            if (Result is Array A)
+            {
+                int i = A.Length;
+                if (i > 0)
+                {
+                    object LastItem = A.GetValue(i - 1);
+                    StringBuilder sb = new StringBuilder();
+
+                    sb.Append(Gateway.GetUrl(BaseQuery));
+
+                    if (Pagination.TryGetVariable("N", out Variable v))
+                    {
+                        sb.Append("n=");
+                        sb.Append(Expression.ToString(v.ValueObject));
+                        sb.Append('&');
+                    }
+
+                    sb.Append("last=");
+                    sb.Append(LastItem.ToString());
+                    sb.Append("; rel=\"next\"");
+
+                    Response.SetHeader("Link", sb.ToString());
+                }
+            }
+        }
+        public static bool IsPaginated(HttpRequest Request, out bool HasLast, out Variables Pagination, params Variable[] Variables)
+        {
+            Pagination = null;
+            HasLast = false;
+
+            if ((Variables?.Length ?? 0) > 0)
+            {
+                Pagination = new Variables();
+
+                foreach (Variable v in Variables)
+                    Pagination[v.Name] = v.ValueObject;
+            }
+
+            if (Request.Header.TryGetQueryParameter("n", out string NStr))
+            {
+                if (!int.TryParse(NStr, out int N) || N < 0)
+                    throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid number of results requested."), apiHeader);
+
+                Pagination ??= new Variables();
+                Pagination["N"] = N;
+
+                if (Request.Header.TryGetQueryParameter("last", out string Last))
+                {
+                    HasLast = true;
+                    Pagination["Last"] = Last;
+                }
+
+                return true;
+            }
+            else
+            {
+                if (Request.Header.TryGetQueryParameter("last", out string Last))
+                {
+                    HasLast = true;
+
+                    Pagination ??= new Variables();
+                    Pagination["Last"] = Last;
+                }
+
+                return false;
+            }
+        }
+        #endregion
+
+        #region Sniffers
+
+        // <summary>
+        /// Registers a web sniffer on the registry.
+        /// </summary>
+        /// <param name="SnifferId">Sniffer ID</param>
+        /// <param name="Request">HTTP Request for sniffer page.</param>
+        /// <param name="UserVariable">Name of user variable.</param>
+        /// <param name="Privileges">Privileges required to view content.</param>
+        /// <returns>Code to embed into page.</returns>
+        public static string RegisterSniffer(string SnifferId, HttpRequest Request,
+            string UserVariable, params string[] Privileges)
+        {
+            return Gateway.AddWebSniffer(SnifferId, Request, observable, UserVariable, Privileges);
+        }
+
+        public static async void Sniff(string ApiResource, IDockerActor Actor, DockerRepository Repository, string ReferenceString)
+        {
+            StringBuilder s = new StringBuilder();
+
+            s.AppendLine(ApiResource);
+            s.AppendLine(Actor.GetActorType().ToString());
+            s.AppendLine(Actor.GetGuid().ToString());
+            s.AppendLine(Repository.RepositoryName);
+            s.AppendLine(ReferenceString);
+
+            snifferProxy.ReceiveText(s.ToString());
+        }
+
+        #endregion
+
+        /// <summary>
+        /// Disposes of the resource.
+        /// </summary>
+        public void Dispose()
+        {
+            this.DisposeAsync().Wait();
+        }
+
+        /// <summary>
+        /// Disposes of the resource.
+        /// </summary>
+        public async Task DisposeAsync()
+        {
+            // TODO: ask Peter if there is a betwer way
+            DanglingDockerBlob[] DanglingBlobs = (await Database.Find<DanglingDockerBlob>()).ToArray();
+            Task[] tasks = new Task[DanglingBlobs.Length * 2];
+
+            for (int i = 0; i < DanglingBlobs.Length; i++)
+            {
+                tasks[i * 2] = Database.Delete(DanglingBlobs[i]);
+                tasks[i * 2 + i] = blobStorage.DeleteBlob(DanglingBlobs[i].Digest);
+            }
+
+            Task.WaitAll(tasks);
+        }
+
+        /// <summary>
+        /// Returns Docker Registry error content for common HTTP error codes (if not provided by resource).
+        /// </summary>
+        /// <param name="StatusCode">HTTP Status code to return.</param>
+        /// <returns>Custom content, or null if none.</returns>
+        public override Task<object> DefaultErrorContent(int StatusCode)
+        {
+            return StatusCode switch
+            {
+                429 => Task.FromResult<object>(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied due to rate limitations.")),
+                401 => Task.FromResult<object>(new DockerErrors(DockerErrorCode.UNAUTHORIZED, "Authentication required.")),
+                _ => base.DefaultErrorContent(StatusCode),
+            };
+        }
+    }
 }

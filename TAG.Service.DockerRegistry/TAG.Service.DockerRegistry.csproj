@@ -1,30 +1,38 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
+	<PropertyGroup>
+		<TargetFramework>netstandard2.1</TargetFramework>
+	</PropertyGroup>
 
-  <PropertyGroup>
-    <TargetFramework>netstandard2.1</TargetFramework>
-  </PropertyGroup>
+	<ItemGroup>
+		<None Remove="TAG.Service.DockerRegistry.manifest" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <None Remove="TAG.Service.DockerRegistry.manifest" />
-  </ItemGroup>
+	<ItemGroup>
+	  <Content Include="Root\DockerRegistry\Sniffer.md">
+	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+	  </Content>
+	</ItemGroup>
 
-  <ItemGroup>
-    <Content Include="TAG.Service.DockerRegistry.manifest">
-      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-    </Content>
-  </ItemGroup>
+	<ItemGroup>
+		<Content Include="TAG.Service.DockerRegistry.manifest">
+			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+	</ItemGroup>
 
-  <ItemGroup>
-    <PackageReference Include="Waher.IoTGateway" Version="3.4.8" />
-    <PackageReference Include="Waher.Runtime.Inventory" Version="1.4.4" />
-  </ItemGroup>
+	<ItemGroup>
+		<PackageReference Include="Waher.IoTGateway" Version="3.4.11" />
+		<PackageReference Include="Waher.Runtime.Inventory" Version="1.4.5" />
+	</ItemGroup>
 
-  <ItemGroup>
-    <ProjectReference Include="..\TAG.Networking.DockerRegistry\TAG.Networking.DockerRegistry.csproj" />
-  </ItemGroup>
+	<ItemGroup>
+		<!-- TODO: ask if i should use package reference -->
+		<ProjectReference Include="..\..\iotbroker\Waher.Service.IoTBroker\Waher.Service.IoTBroker.csproj" />
+		<ProjectReference Include="..\TAG.Networking.DockerRegistry\TAG.Networking.DockerRegistry.csproj" />
+		<ProjectReference Include="..\TAG.Service.DockerRegistry.Script\TAG.Service.DockerRegistry.Script.csproj" />
+	</ItemGroup>
 
-  <Target Name="PostBuild" AfterTargets="PostBuildEvent">
-    <Exec Command="&quot;C:\My Projects\IoTGateway\Utilities\Waher.Utility.Install\bin\$(ConfigurationName)\net8.0\win-x86\Waher.Utility.Install.exe&quot; -m &quot;C:\My Projects\NeuronDockerRegistry\TAG.Service.DockerRegistry\bin\$(ConfigurationName)\netstandard2.1\TAG.Service.DockerRegistry.manifest&quot; -s &quot;C:\My Projects\IoTGateway\Waher.IoTGateway.Console\bin\$(ConfigurationName)\net8.0\Waher.IoTGateway.Console.dll&quot; -d &quot;C:\ProgramData\IoT Gateway Dev&quot;&#xD;&#xA;" />
-  </Target>
+	<Target Name="PostBuild" AfterTargets="PostBuildEvent">
+		<Exec Command="&quot;C:\My Projects\IoTGateway\Utilities\Waher.Utility.Install\bin\$(ConfigurationName)\net8.0\win-x86\Waher.Utility.Install.exe&quot; -m &quot;C:\My Projects\NeuronDockerRegistry\TAG.Service.DockerRegistry\bin\$(ConfigurationName)\netstandard2.1\TAG.Service.DockerRegistry.manifest&quot; -s &quot;C:\My Projects\IoTGateway\Waher.IoTGateway.Console\bin\$(ConfigurationName)\net8.0\Waher.IoTGateway.Console.dll&quot; -d &quot;C:\ProgramData\IoT Gateway Dev&quot;&#xD;&#xA;" />
+	</Target>
 
 </Project>

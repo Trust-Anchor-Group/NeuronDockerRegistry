@@ -12,7 +12,7 @@ namespace TAG.Networking.DockerRegistry.Model.Oci
 		public string MediaType => MediaTypeValue;
 		public OciImageConfig Config { get; set; }
 		public OciImageLayer[] Layers { get; set; }
-		public string Raw { get; set; }
+		public byte[] Raw { get; set; }
 
 		public OCIImageManifest()
 		{

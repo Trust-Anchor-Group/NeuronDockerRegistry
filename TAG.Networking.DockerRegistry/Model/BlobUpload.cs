@@ -18,15 +18,21 @@ namespace TAG.Networking.DockerRegistry.Model
 		/// Contains information about a current upload.
 		/// </summary>
 		/// <param name="Uuid">UUID of upload.</param>
-		public BlobUpload(Guid Uuid)
+		public BlobUpload(Guid Uuid, string UserName)
 		{
 			this.Uuid = Uuid;
+			this.UserName = UserName;
 		}
 
 		/// <summary>
 		/// UUID of upload.
 		/// </summary>
 		public Guid Uuid { get; }
+
+		/// <summary>
+		/// UUID of upload.
+		/// </summary>
+		public string UserName { get; }
 
 		/// <summary>
 		/// BLOB reference object.
@@ -70,7 +76,7 @@ namespace TAG.Networking.DockerRegistry.Model
 		/// </summary>
 		/// <param name="Function">Hash Function</param>
 		/// <returns>BLOB Digest</returns>
-		public async Task<byte[]> ComputeDigest(HashFunction Function)
+		public async Task<HashDigest> ComputeDigest(HashFunction Function)
 		{
 			await this.Lock();
 			try
@@ -88,14 +94,14 @@ namespace TAG.Networking.DockerRegistry.Model
 		/// </summary>
 		/// <param name="Function">Hash Function</param>
 		/// <returns>BLOB Digest</returns>
-		internal byte[] ComputeDigestLocked(HashFunction Function)
+		internal HashDigest ComputeDigestLocked(HashFunction Function)
 		{
 			if (this.File is null)
-				return new byte[0];
+				return null;
 			else
 			{
 				this.File.Position = 0;
-				return Hashes.ComputeHash(Function, this.File);
+				return new HashDigest(Function, this.File);
 			}
 		}
 

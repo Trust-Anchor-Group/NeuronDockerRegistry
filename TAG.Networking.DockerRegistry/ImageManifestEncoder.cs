@@ -31,7 +31,7 @@ namespace TAG.Networking.DockerRegistry
 				return Task.FromResult(new ContentResponse(new ArgumentException("Object not IImageManifest.", nameof(Object))));
 			}
 
-			return Task.FromResult(new ContentResponse(Manifest.MediaType, Object, Encoding.UTF8.GetBytes(Manifest.Raw)));
+			return Task.FromResult(new ContentResponse(Manifest.MediaType, Object, Manifest.Raw));
 		}
 
 		public bool Encodes(object Object, out Grade Grade, params string[] AcceptedContentTypes)

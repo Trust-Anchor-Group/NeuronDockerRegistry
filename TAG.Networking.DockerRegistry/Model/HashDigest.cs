@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Linq;
 using System.Text;
 using Waher.Security;
@@ -19,6 +20,12 @@ namespace TAG.Networking.DockerRegistry.Model
 			: this(HashFunction.SHA256, Encoding.UTF8.GetBytes(s))
 		{
 
+		}
+		
+		public HashDigest(HashFunction Function, Stream File)
+		{
+			this.HashFunction = Function;
+			this.Hash = Hashes.ComputeHash(Function, File);
 		}
 
 		public HashDigest(HashFunction Function, byte[] data)
@@ -58,12 +65,37 @@ namespace TAG.Networking.DockerRegistry.Model
 		{
 			if (obj is HashDigest D)
 			{
-				if (this.HashFunction != D.HashFunction)
-					return false;
-				return this.Hash.SequenceEqual(D.Hash);
+				return this.Hash.Equals(D.Hash);
 			}
 			else
 				return false;
+		}
+		public bool Equals(HashDigest Other)
+		{
+			if (this.HashFunction != Other.HashFunction)
+				return false;
+			return this.Hash.SequenceEqual(Other.Hash);
+	
+		}
+
+		public static bool operator ==(HashDigest D1, HashDigest D2)
+		{
+			if (D1 is null && D2 is null)
+				return true;
+			else if (D1 is null || D2 is null)
+				return false;
+			else
+				return D1.Equals(D2);
+		}
+
+		public static bool operator !=(HashDigest D1, HashDigest D2)
+		{
+			if (D1 is null && D2 is null)
+				return false;
+			else if (D1 is null || D2 is null)
+				return true;
+			else
+				return !D1.Equals(D2);
 		}
 
 		public override int GetHashCode()
