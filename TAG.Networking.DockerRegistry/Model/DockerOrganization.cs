@@ -8,7 +8,6 @@ using Waher.Persistence.Filters;
 namespace TAG.Networking.DockerRegistry.Model
 {
     [CollectionName("DockerOrganization")]
-    [Index("ObjectId")]
     [Index("Guid")]
     [Index("OrganizationName")]
     public class DockerOrganization : IDockerActor
@@ -40,7 +39,7 @@ namespace TAG.Networking.DockerRegistry.Model
         /// <summary>
         /// Docker storage guid
         /// </summary>
-        Guid Storage;
+        public Guid Storage;
 
         public async Task<DockerStorage> GetStorage()
         {

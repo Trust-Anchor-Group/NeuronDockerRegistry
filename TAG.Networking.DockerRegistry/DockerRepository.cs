@@ -12,9 +12,9 @@ namespace TAG.Networking.DockerRegistry
 {
     [CollectionName("DockerRepository")]
     [TypeName(TypeNameSerialization.None)]
-    [Index("ObjectId")]
     [Index("RepositoryName")]
-    [Index("RepositoryOwner")]
+    [Index("OwnerGuid")]
+    [Index("OwnerType")]
     [Index("IsPrivate")]
     public class DockerRepository
     {

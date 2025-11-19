@@ -8,7 +8,6 @@ using Waher.Persistence.Filters;
 namespace TAG.Networking.DockerRegistry.Model
 {
     [CollectionName("DockerUser")]
-    [Index("ObjectId")]
     [Index("Guid")]
     [Index("UserName")]
     public class DockerUser : IDockerActor

@@ -8,7 +8,6 @@ using Waher.Persistence.Filters;
 namespace TAG.Networking.DockerRegistry.Model
 {
     [CollectionName("DockerStorage")]
-    [Index("ObjectId")]
     [Index("Guid")]
     public class DockerStorage
     {

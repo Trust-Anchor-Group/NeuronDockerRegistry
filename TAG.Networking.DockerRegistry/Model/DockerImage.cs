@@ -8,9 +8,10 @@ namespace TAG.Networking.DockerRegistry.Model
     /// </summary>
     [CollectionName("DockerImages")]
     [TypeName(TypeNameSerialization.None)]
-    [Index("AccountName", "Image", "Tag")]
-    [Index("Image", "Tag")]
-    [Index("Image", "Digest")]
+    [Index("RepositoryName", "Tag")]
+    [Index("RepositoryName")]
+    [Index("Tag")]
+    [Index("Digest")]
     public class DockerImage
     {
         /// <summary>
