@@ -91,6 +91,14 @@ namespace TAG.Networking.DockerRegistry.Endpoints
         {
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
+            DockerStorage Storage = await Actor.GetStorage();
+
+            if (Storage.UsedStorage >= Storage.MaxStorage)
+                throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Storage quota exceeded."), apiHeader);
+
+            if (!HashDigest.TryParseDigest(Reference, out HashDigest Digest))
+                throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Invalid digest."), apiHeader);
+
             Guid Uuid = Guid.NewGuid();
 
             this.uploads[Uuid] = new BlobUpload(Uuid, Request.User.UserName);
@@ -159,6 +167,8 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
                 throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
 
+            DockerStorage Storage = await Actor.GetStorage();
+
             HashDigest Digest;
 
             await UploadRecord.Lock();
@@ -180,6 +190,8 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                 {
                     Created = DateTime.Now,
                     Digest = Digest,
+                    Owner = Actor.GetGuid(),
+                    Size = UploadRecord.File.Length
                 };
 
                 await Database.Insert(Dangling);
@@ -192,6 +204,8 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                     throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "BLOB already exists."), apiHeader);
                 }
 
+                await Storage.RegisterDanglingBlob(Dangling);
+                await Database.Update(Storage);
 
                 Response.StatusCode = 201;
                 Response.StatusMessage = "Created";
@@ -213,7 +227,6 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             await Response.SendResponse();
             return;
         }
-
 
         private async Task CopyToBlobLocked(HttpRequest Request, ContentByteRangeInterval Interval, BlobUpload UploadRecord, Guid Uuid)
         {

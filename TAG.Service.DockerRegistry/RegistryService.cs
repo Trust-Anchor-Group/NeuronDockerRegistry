@@ -93,6 +93,8 @@ namespace TAG.Service.DockerRegistry
                     await DeleteOrganization(Organization);
                 else if (args.Object is DockerRepository Repo)
                     await DeleteRepository(Repo);
+                else if (args.Object is DanglingDockerBlob Blob)
+                    await Blob.UnregistreFromStorage();
             };
 
             return Task.CompletedTask;
@@ -117,17 +119,18 @@ namespace TAG.Service.DockerRegistry
 
         public async Task DeleteUser(DockerUser User)
         {
-            await DeleteActor(User);
+            await DeleteActorResources(User);
         }
 
         public async Task DeleteOrganization(DockerOrganization Organization)
         {
-            await DeleteActor(Organization);
+            await DeleteActorResources(Organization);
         }
 
-        public async Task DeleteActor(IDockerActor Actor)
+        public async Task DeleteActorResources(IDockerActor Actor)
         {
             await Database.FindDelete<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("OwnerGuid", Actor.GetGuid())));
+            await Database.Delete((await Actor.GetStorage()));
         }
 
         public async Task DeleteRepository(DockerRepository Repository)

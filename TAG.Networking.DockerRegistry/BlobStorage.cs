@@ -7,6 +7,7 @@ using TAG.Networking.DockerRegistry.Model;
 using Waher.Events;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
+using Waher.Runtime.Threading;
 using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry
@@ -151,7 +152,7 @@ namespace TAG.Networking.DockerRegistry
 
             AllBlobDigests.Sort();
 
-            DanglingDockerBlob[] DanglingBlobs = (await Database.Find<DanglingDockerBlob>()).ToArray();
+            DanglingDockerBlob[] DanglingBlobs = (await Database.FindDelete<DanglingDockerBlob>()).ToArray();
 
             int index = -1;
             for (int i = 0; i < DanglingBlobs.Length; i++)

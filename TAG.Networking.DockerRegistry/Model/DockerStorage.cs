@@ -5,6 +5,7 @@ using Waher.Events;
 using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
+using Waher.Runtime.Threading;
 namespace TAG.Networking.DockerRegistry.Model
 {
     [CollectionName("DockerStorage")]
@@ -44,7 +45,6 @@ namespace TAG.Networking.DockerRegistry.Model
         {
 
         }
-
         public DockerStorage(long MaxStorage)
         {
             this.MaxStorage = MaxStorage;
@@ -52,87 +52,104 @@ namespace TAG.Networking.DockerRegistry.Model
 
         public async Task RegistrerImage(IImageManifest Image)
         {
-            await IncrementDigest(Image.GetConfig().Digest);
+            await RecordDigestReference(Image.GetConfig().Digest);
 
             foreach (IImageLayer Layer in Image.GetLayers())
             {
-                await IncrementDigest(Layer.Digest);
+                await RecordDigestReference(Layer.Digest);
             }
         }
 
         public async Task UnregisterImage(IImageManifest Image)
         {
-            await DecrementDigest(Image.GetConfig().Digest);
+            await DropDigestReference(Image.GetConfig().Digest);
 
             foreach (IImageLayer Layer in Image.GetLayers())
             {
-                await DecrementDigest(Layer.Digest);
+                await DropDigestReference(Layer.Digest);
             }
         }
 
-        private async Task IncrementDigest(HashDigest Digest)
+        public async Task RegisterDanglingBlob(DanglingDockerBlob blob)
+        {
+            MaxStorage += blob.Size;
+            IncrementDigest(blob.Digest);
+        }
+
+        public async Task UnregisterDanglingBlob(DanglingDockerBlob blob)
+        {
+            MaxStorage -= blob.Size;
+            DecrementDigest(blob.Digest);
+        }
+
+        private async Task RecordDigestReference(HashDigest Digest)
+        {
+            if (!IncrementDigest(Digest))
+                return;
+            
+            DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(new FilterFieldEqualTo("Digest", Digest)));
+
+            if (Blob == null)
+            {
+                Log.Critical("Tried to increment with blob which does not exist");
+                return;
+            }
+
+            UsedStorage += Blob.Size;
+        }
+
+        private bool IncrementDigest(HashDigest Digest)
         {
             int index = Array.BinarySearch(BlobCounter, new DigestReferenceCounter() { Digest = Digest });
 
             if (index < 0)
             {
-                // new blob
-                DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(new FilterFieldEqualTo("Digest", Digest)));
-
-                if (Blob == null)
-                {
-                    Log.Critical("Tried to increment with blob which does not exist");
-                    return;
-                }
-
-                UsedStorage += Blob.Size;
-
                 List<DigestReferenceCounter> BlobCounterList = new List<DigestReferenceCounter>(this.BlobCounter ?? Array.Empty<DigestReferenceCounter>());
-                BlobCounterList.Add(new DigestReferenceCounter()
-                {
-                    Digest = Digest,
-                    ReferenceCount = 1
-                });
-
+                BlobCounterList.Add(new DigestReferenceCounter() { Digest = Digest, ReferenceCount = 1 });
                 BlobCounterList.Sort();
-
                 BlobCounter = BlobCounterList.ToArray();
+                return true;
             }
-            else
-            {
-                BlobCounter[index].ReferenceCount++;
-            }
+
+            BlobCounter[index].ReferenceCount++;
+            return false;
         }
 
-        private async Task DecrementDigest(HashDigest Digest)
+        private async Task DropDigestReference(HashDigest Digest)
+        {
+            if (!DecrementDigest(Digest))
+                return;
+
+            DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(new FilterFieldEqualTo("Digest", Digest)));
+            if (Blob == null)
+            {
+                Log.Critical("Tried to decrement with blob which does not exist");
+                return;
+            }
+            UsedStorage -= Blob.Size;
+        }
+
+        private bool DecrementDigest(HashDigest Digest)
         {
             int index = Array.BinarySearch(BlobCounter, new DigestReferenceCounter() { Digest = Digest });
 
             if (index < 0)
             {
                 Log.Critical("Tried to decrement digest which was not registed");
+                return false;
             }
-            else
+
+            BlobCounter[index].ReferenceCount--;
+
+            if (BlobCounter[index].ReferenceCount < 1)
             {
-                BlobCounter[index].ReferenceCount--;
-
-                if (BlobCounter[index].ReferenceCount < 1)
-                {
-                    List<DigestReferenceCounter> BlobCounterList = new List<DigestReferenceCounter>(this.BlobCounter ?? Array.Empty<DigestReferenceCounter>());
-                    BlobCounterList.RemoveAt(index);
-                    DockerBlob Blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(new FilterFieldEqualTo("Digest", Digest)));
-
-                    if (Blob == null)
-                    {
-                        Log.Critical("Tried to decrement with blob which does not exist");
-                        return;
-                    }
-
-                    BlobCounter = BlobCounterList.ToArray();
-
-                    UsedStorage -= Blob.Size;
-                }
+                List<DigestReferenceCounter> BlobCounterList = new List<DigestReferenceCounter>(this.BlobCounter ?? Array.Empty<DigestReferenceCounter>());
+                BlobCounterList.RemoveAt(index);
+                BlobCounter = BlobCounterList.ToArray();
+                return true;
             }
+
+            return false;
         }
 
         public static string UIString(DockerStorage Storage)

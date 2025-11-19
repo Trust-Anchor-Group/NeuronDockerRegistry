@@ -4,6 +4,7 @@ using System.Linq;
 using System.Threading.Tasks;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
+using Waher.Runtime.Threading;
 
 namespace TAG.Networking.DockerRegistry.Model
 {
@@ -45,6 +46,11 @@ namespace TAG.Networking.DockerRegistry.Model
             }
 
             await Database.Update(Storage);
+        }
+
+        public static async Task<Semaphore> StorageSemaphore(IDockerActor Actor)
+        {
+            return await Semaphores.BeginWrite("DockerRegistry_StorageAffecting_" + Actor.GetGuid());
         }
     }
 

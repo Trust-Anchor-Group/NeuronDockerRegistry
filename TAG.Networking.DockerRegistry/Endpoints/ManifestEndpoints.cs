@@ -1,4 +1,5 @@
 ﻿using System.Collections.Generic;
+using System.Linq;
 using System.Threading.Tasks;
 using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
@@ -88,7 +89,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
         public async Task PUT(HttpRequest Request, HttpResponse Response, IDockerActor Actor, DockerRepository Repository, string Reference)
         {
-            using Semaphore Semaphore = await Semaphores.BeginWrite("DockerRegistry_StorageAffecting_" + Actor.GetGuid());
+            using Semaphore Semaphore = await IDockerActor.StorageSemaphore(Actor);
             DockerStorage ActorStorage = await Actor.GetStorage();
 
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
@@ -182,13 +183,15 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                 await ActorStorage.UnregisterImage(Image.Manifest);
                 await Database.Delete(Image);
                 await Database.Update(ActorStorage);
-                throw new BadRequestException(new DockerErrors(DockerErrorCode.SIZE_INVALID, "Storage quota exceeded."), apiHeader);
+                throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Storage quota exceeded."), apiHeader);
+            }
+
+            foreach (IImageLayer Layer in Manifest.GetLayers())
+            {
+                DanglingDockerBlob[] Deleted = (await Database.FindDelete<DanglingDockerBlob>(new FilterAnd(new FilterFieldEqualTo("Digest", Layer.Digest)))).ToArray();
             }
 
             await Database.Update(ActorStorage);
-
-            foreach (IImageLayer Layer in Manifest.GetLayers())
-                await Database.FindDelete<DanglingDockerBlob>(new FilterAnd(new FilterFieldEqualTo("Digest", Layer.Digest)));
 
             Log.Informational("Docker image uploaded.", Image.RepositoryName, Request.User.UserName,
                 await LoginAuditor.Annotate(Request.RemoteEndPoint,

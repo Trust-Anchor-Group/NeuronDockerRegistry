@@ -439,7 +439,7 @@ namespace TAG.Networking.DockerRegistry
             return User;
         }
 
-        private async Task<DockerOrganization> GetOrganizationUser(Account Account)
+        private async Task<DockerOrganization> GetOrganizationActor(Account Account)
         {
             DockerOrganization Org = await Database.FindFirstIgnoreRest<DockerOrganization>(new FilterAnd(new FilterFieldEqualTo("OrganizationName", Account.OrgName)));
             return Org;
@@ -458,7 +458,7 @@ namespace TAG.Networking.DockerRegistry
             if (!(User is null))
                 Actors.Add(User);
 
-            DockerOrganization Organization = await GetOrganizationUser(Account);
+            DockerOrganization Organization = await GetOrganizationActor(Account);
             if (!(Organization is null))
                 Actors.Add(Organization);
 
