@@ -3,6 +3,7 @@ using System.Threading.Tasks;
 using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
 using Waher.Networking.HTTP;
+using Waher.Networking.Sniffers;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
 
@@ -13,15 +14,14 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 	{
 		private BlobStorage blobStorage;
 
-		public BlobEndpoints(string DockerRegistryFolder, BlobStorage BlobStorage)
-			: base(DockerRegistryFolder)
+		public BlobEndpoints(string DockerRegistryFolder, ISniffer[] Sniffers, BlobStorage BlobStorage)
+			: base(DockerRegistryFolder, Sniffers)
 		{
 			this.blobStorage = BlobStorage;
 		}
 
 		public async Task GET(HttpRequest Request, HttpResponse Response, ByteRangeInterval Interval,  IDockerActor Actor, DockerRepository Repository, string Reference)
 		{
-
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Pull, Request);
 
             if (!HashDigest.TryParseDigest(Reference, out HashDigest Digest))

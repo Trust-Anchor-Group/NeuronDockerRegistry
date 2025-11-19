@@ -8,6 +8,7 @@ using Waher.Content;
 using Waher.Events;
 using Waher.Networking.CoAP.Options;
 using Waher.Networking.HTTP;
+using Waher.Networking.Sniffers;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
 using Waher.Runtime.Threading;
@@ -19,8 +20,8 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 {
     internal class ManifestEndpoints : DockerEndpoints
     {
-        public ManifestEndpoints(string DockerRegistryFolder)
-            : base(DockerRegistryFolder)
+        public ManifestEndpoints(string DockerRegistryFolder, ISniffer[] Sniffers)
+            : base(DockerRegistryFolder, Sniffers)
         {
 
         }
@@ -85,7 +86,6 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             await Response.SendResponse();
         }
 
-        // TODO: make sure that newly uploaded blobs actually is on a manifest, delete them otherwise
         public async Task PUT(HttpRequest Request, HttpResponse Response, IDockerActor Actor, DockerRepository Repository, string Reference)
         {
             using Semaphore Semaphore = await Semaphores.BeginWrite("DockerRegistry_StorageAffecting_" + Actor.GetGuid());

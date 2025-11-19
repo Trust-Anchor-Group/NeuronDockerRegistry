@@ -9,7 +9,6 @@ namespace TAG.Networking.DockerRegistry.Model.Oci
 		{
 			OciContentDescriptor Descriptor = new OciContentDescriptor();
 
-			// TODO: check which media types OCI Content Descriptor supports.
 			if (!(Json.TryGetValue("mediaType", out object MediaTypeObj) && MediaTypeObj is string JsonMediaType))
 				throw new Exception("Invalid media type.");
 			Descriptor.MediaType = JsonMediaType;

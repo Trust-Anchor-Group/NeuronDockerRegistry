@@ -5,7 +5,6 @@ using System.Linq;
 using System.Threading.Tasks;
 using TAG.Networking.DockerRegistry.Model;
 using Waher.Events;
-using Waher.Networking.XMPP.StanzaErrors;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
 using Waher.Security;

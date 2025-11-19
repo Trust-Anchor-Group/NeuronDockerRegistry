@@ -9,7 +9,6 @@ namespace TAG.Networking.DockerRegistry.Model.Docker
 		{
 			DockerImageV2ContentDescriptor Descriptor = new DockerImageV2ContentDescriptor();
 
-			// TODO: check which media types OCI Content Descriptor supports.
 			if (!(Json.TryGetValue("mediaType", out object MediaTypeObj) && MediaTypeObj is string JsonMediaType))
 				throw new Exception("Invalid media type.");
 			Descriptor.MediaType = JsonMediaType;

@@ -1,8 +1,8 @@
 ﻿using System.Collections.Generic;
-using System.IO;
 using System.Threading.Tasks;
 using TAG.Networking.DockerRegistry.Model;
 using Waher.Networking.HTTP;
+using Waher.Networking.Sniffers;
 using Waher.Script;
 
 
@@ -10,12 +10,11 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 {
     internal class TagsEndpoints : DockerEndpoints
     {
-        public TagsEndpoints(string DockerRegistryFolder)
-             : base(DockerRegistryFolder)
+        public TagsEndpoints(string DockerRegistryFolder, ISniffer[] Sniffers)
+             : base(DockerRegistryFolder, Sniffers)
         {
 
         }
-
 
         public async Task GET(HttpRequest Request, HttpResponse Response, IDockerActor Actor, DockerRepository Repository, string Reference)
         {
@@ -46,16 +45,6 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                 { "name", Repository.RepositoryName },
                 { "tags", Result }
             });
-        }
-
-        public Task PUT(DockerRepository Repository, string Reference)
-        {
-            return Task.CompletedTask;
-        }
-
-        public Task DELETE(DockerRepository Repository, string Reference)
-        {
-            return Task.CompletedTask;
         }
     }
 }

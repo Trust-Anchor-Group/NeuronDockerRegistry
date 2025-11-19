@@ -53,32 +53,22 @@ namespace TAG.Networking.DockerRegistry.Model
 
         public async Task RegistrerImage(IImageManifest Image)
         {
-            List<Task> Tasks = new List<Task>();
-
             await IncrementDigest(Image.GetConfig().Digest);
 
             foreach (IImageLayer Layer in Image.GetLayers())
             {
-                Tasks.Add(IncrementDigest(Layer.Digest));
+                await IncrementDigest(Layer.Digest);
             }
-
-            Task.WaitAll(Tasks.ToArray());
-
-            await Database.Update(this);
         }
 
         public async Task UnregisterImage(IImageManifest Image)
         {
-            List<Task> Tasks = new List<Task>();
-
-            Tasks.Add(DecrementDigest(Image.GetConfig().Digest));
+            await DecrementDigest(Image.GetConfig().Digest);
 
             foreach (IImageLayer Layer in Image.GetLayers())
             {
-                Tasks.Add(DecrementDigest(Layer.Digest));
+                await DecrementDigest(Layer.Digest);
             }
-
-            Task.WaitAll(Tasks.ToArray());
         }
 
         private async Task IncrementDigest(HashDigest Digest)

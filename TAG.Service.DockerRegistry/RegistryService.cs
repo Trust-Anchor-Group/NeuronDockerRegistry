@@ -1,13 +1,17 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using System.IO;
 using System.Threading.Tasks;
 using TAG.Networking.DockerRegistry;
+using TAG.Networking.DockerRegistry.Model;
+using Waher.Events;
 using Waher.IoTGateway;
 using Waher.IoTGateway.Setup;
 using Waher.Networking;
 using Waher.Networking.HTTP;
 using Waher.Networking.HTTP.Authentication;
+using Waher.Persistence;
+using Waher.Persistence.Filters;
+using Waher.Persistence.Serialization;
 using Waher.Runtime.Inventory;
 using Waher.Runtime.Timing;
 using Waher.Security.JWT;
@@ -81,12 +85,21 @@ namespace TAG.Service.DockerRegistry
             blobClearSchedule = new Scheduler();
             CleanSchedule(null).Start();
 
+            Database.ObjectDeleted += async (object Sender, ObjectEventArgs args) =>
+            {
+                if (args.Object is DockerUser User)
+                    await DeleteUser(User);
+                else if (args.Object is DockerOrganization Organization)
+                    await DeleteOrganization(Organization);
+                else if (args.Object is DockerRepository Repo)
+                    await DeleteRepository(Repo);
+            };
+
             return Task.CompletedTask;
         }
-        
         private async Task CleanSchedule(object State)
         {
-            blobClearSchedule.Add(System.DateTime.Now.AddSeconds(5), CleanSchedule, null);
+            blobClearSchedule.Add(System.DateTime.Now.AddDays(1), CleanSchedule, null);
 
             await CleanUnmanagedRepositories();
             await CleanUnusedBlobs();
@@ -100,6 +113,26 @@ namespace TAG.Service.DockerRegistry
         public async Task<int> CleanUnmanagedRepositories()
         {
             return await server.CleanUnmanagedRepositories();
+        }
+
+        public async Task DeleteUser(DockerUser User)
+        {
+            await DeleteActor(User);
+        }
+
+        public async Task DeleteOrganization(DockerOrganization Organization)
+        {
+            await DeleteActor(Organization);
+        }
+
+        public async Task DeleteActor(IDockerActor Actor)
+        {
+            await Database.FindDelete<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("OwnerGuid", Actor.GetGuid())));
+        }
+
+        public async Task DeleteRepository(DockerRepository Repository)
+        {
+            await Database.FindDelete<DockerImage>(new FilterAnd(new FilterFieldEqualTo("RepositoryName", Repository.RepositoryName)));
         }
 
         /// <summary>

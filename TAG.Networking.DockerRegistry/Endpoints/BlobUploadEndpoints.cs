@@ -5,6 +5,7 @@ using System.Web;
 using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
 using Waher.Networking.HTTP;
+using Waher.Networking.Sniffers;
 using Waher.Persistence;
 using Waher.Runtime.Cache;
 
@@ -32,8 +33,8 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             }
         }
 
-        public BlobUploadEndpoints(string DockerRegistryFolder, BlobStorage BlobStorage)
-            : base(DockerRegistryFolder)
+        public BlobUploadEndpoints(string DockerRegistryFolder, ISniffer[] Sniffers, BlobStorage BlobStorage)
+            : base(DockerRegistryFolder, Sniffers)
         {
             this.uploads.Removed += this.Uploads_Removed;
             this.blobStorage = BlobStorage;
@@ -100,7 +101,6 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             Response.SetHeader("Range", "0-0");
             Response.SetHeader("Docker-Upload-UUID", Uuid.ToString());
             await Response.SendResponse();
-            return;
         }
 
         public async Task DELETE(HttpRequest Request, HttpResponse Response, IDockerActor Actor, DockerRepository Repository, string Reference)
@@ -171,15 +171,10 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                     !HashDigest.TryParseDigest(DigestStr = HttpUtility.UrlDecode(DigestStr), out Digest))
                     throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
 
+
                 HashDigest ComputedDigest = UploadRecord.ComputeDigestLocked(Digest.HashFunction);
                 if (ComputedDigest != Digest)
                     throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
-
-
-                bool Created = await this.blobStorage.UploadComplete(UploadRecord);
-
-                if (!Created)
-                    throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "BLOB already exists."), apiHeader);
 
                 DanglingDockerBlob Dangling = new DanglingDockerBlob()
                 {
@@ -188,6 +183,15 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                 };
 
                 await Database.Insert(Dangling);
+
+                bool Created = await this.blobStorage.UploadComplete(UploadRecord);
+
+                if (!Created)
+                {
+                    await Database.Delete(Dangling);
+                    throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "BLOB already exists."), apiHeader);
+                }
+
 
                 Response.StatusCode = 201;
                 Response.StatusMessage = "Created";

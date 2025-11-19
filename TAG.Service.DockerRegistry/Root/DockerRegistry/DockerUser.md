@@ -10,13 +10,24 @@ Parameter: Guid
 
 {{
 DockerUser := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser where Guid=Guid;
+
+if DockerUser = null then
+	NotFound("User with guid " + Guid + " does not exist.");
+
 Storage := DockerUser.GetStorage();
 
-if (exists(Posted) and Posted matches { "delete": Bool(PDelete) } and PDelete = true) then (
-	DeleteObject(DockerUser);
-	TemporaryRedirect("DockerUsers.md");
-);
+if exists(Posted) then
+(
+	if Posted matches { "delete": Bool(PDelete) } and PDelete = true then (
+		DeleteObject(DockerUser);
+		TemporaryRedirect("DockerUsers.md");
+	);
 
+	if Posted matches { "maxStorage": Number(PMaxStorage) } and PMaxStorage > 0 then (
+		Storage.MaxStorage:= PMaxStorage;
+		UpdateObject(Storage);
+	);
+);
 "";
 }}
 
@@ -25,6 +36,7 @@ if (exists(Posted) and Posted matches { "delete": Bool(PDelete) } and PDelete = 
 DockerUser: {{DockerUser.AccountName}}
 ===================
 
+{{DockerUser.Guid}}
 
 ============================================================================
 
@@ -32,6 +44,12 @@ DockerUser: {{DockerUser.AccountName}}
 <form method="POST">
 	<input name="delete" value="true" hidden>
 	<button>Delete</button>
+</form>
+
+## Update Storage
+<form method="POST">
+	<input name="maxStorage" value="{{Storage.MaxStorage}}">
+	<button>Update</button>
 </form>
 
 <h2>

@@ -8,7 +8,6 @@ using System.Threading.Tasks;
 using TAG.Networking.DockerRegistry.Endpoints;
 using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
-using Waher.Content;
 using Waher.Events;
 using Waher.IoTGateway;
 using Waher.Networking;
@@ -61,10 +60,10 @@ namespace TAG.Networking.DockerRegistry
             this.dockerRegistryFolder = DockerRegistryFolder;
             this.authenticationSchemes = AuthenticationSchemes;
             this.blobStorage = new BlobStorage(BlobFolder);
-            manifestEndpoints = new ManifestEndpoints(this.dockerRegistryFolder);
-            blobEndpoints = new BlobEndpoints(this.dockerRegistryFolder, blobStorage);
-            blobUploadEndpoints = new BlobUploadEndpoints(this.dockerRegistryFolder, this.blobStorage);
-            tagsEndpoints = new TagsEndpoints(this.dockerRegistryFolder);
+            manifestEndpoints = new ManifestEndpoints(this.dockerRegistryFolder, new ISniffer[] { snifferProxy });
+            blobEndpoints = new BlobEndpoints(this.dockerRegistryFolder, new ISniffer[] { snifferProxy }, blobStorage);
+            blobUploadEndpoints = new BlobUploadEndpoints(this.dockerRegistryFolder, new ISniffer[] { snifferProxy }, this.blobStorage);
+            tagsEndpoints = new TagsEndpoints(this.dockerRegistryFolder, new ISniffer[] { snifferProxy });
         }
 
         /// <summary>
@@ -188,7 +187,6 @@ namespace TAG.Networking.DockerRegistry
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
 
-                Sniff(ApiResource, Actor, Repository, ReferenceString);
                 switch (ApiResource)
                 {
                     case "/blobs":
@@ -204,7 +202,6 @@ namespace TAG.Networking.DockerRegistry
                         await manifestEndpoints.GET(Request, Response, Actor, Repository, ReferenceString);
                         return;
                     case "/_catalog":
-                        // TODO: make only listp public 
                         object Result;
                         if (IsPaginated(Request, out bool HasLast, out Variables Pagination))
                         {
@@ -266,7 +263,6 @@ namespace TAG.Networking.DockerRegistry
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
 
-                Sniff(ApiResource, Actor, Repository, ReferenceString);
                 switch (ApiResource)
                 {
                     case "/blobs/uploads":
@@ -302,7 +298,6 @@ namespace TAG.Networking.DockerRegistry
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
 
-                Sniff(ApiResource, Actor, Repository, ReferenceString);
                 switch (ApiResource)
                 {
                     case "/blobs/uploads":
@@ -359,7 +354,6 @@ namespace TAG.Networking.DockerRegistry
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
 
-                Sniff(ApiResource, Actor, Repository, ReferenceString);
                 switch (ApiResource)
                 {
                     case "/blobs/uploads":
@@ -414,7 +408,6 @@ namespace TAG.Networking.DockerRegistry
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
 
-                Sniff(ApiResource, Actor, Repository, ReferenceString);
                 switch (ApiResource)
                 {
                     case "/blobs/uploads":
@@ -783,19 +776,6 @@ namespace TAG.Networking.DockerRegistry
             return Gateway.AddWebSniffer(SnifferId, Request, observable, UserVariable, Privileges);
         }
 
-        public static async void Sniff(string ApiResource, IDockerActor Actor, DockerRepository Repository, string ReferenceString)
-        {
-            StringBuilder s = new StringBuilder();
-
-            s.AppendLine(ApiResource);
-            s.AppendLine(Actor.GetActorType().ToString());
-            s.AppendLine(Actor.GetGuid().ToString());
-            s.AppendLine(Repository.RepositoryName);
-            s.AppendLine(ReferenceString);
-
-            snifferProxy.ReceiveText(s.ToString());
-        }
-
         #endregion
 
         /// <summary>
@@ -811,7 +791,6 @@ namespace TAG.Networking.DockerRegistry
         /// </summary>
         public async Task DisposeAsync()
         {
-            // TODO: ask Peter if there is a betwer way
             DanglingDockerBlob[] DanglingBlobs = (await Database.Find<DanglingDockerBlob>()).ToArray();
             Task[] tasks = new Task[DanglingBlobs.Length * 2];
 
