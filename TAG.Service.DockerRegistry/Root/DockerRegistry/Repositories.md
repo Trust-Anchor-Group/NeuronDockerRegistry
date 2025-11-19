@@ -3,6 +3,7 @@ Copyright: /Copyright.md
 Master: /Master.md
 JavaScript: /Events.js
 Script: /Controls/SimpleTable.script
+CSS: Style.cssx
 UserVariable: User
 Privilege: Admin.Docker
 Login: /Login.md

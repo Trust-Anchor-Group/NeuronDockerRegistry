@@ -1,0 +1,21 @@
+.docker-double
+{
+    display: flex;
+    gap: 2rem;
+    justify-content: space-between;
+    flex-wrap: wrap;
+}
+
+.docker-row
+{
+    display: flex;
+    gap: 1rem;
+    flex-wrap: wrap;
+    align-items: center;
+}
+
+#create-actor
+{
+    max-width: 30rem;
+    min-width: 20rem;
+}

@@ -1,4 +1,4 @@
-Title: Users
+Title: Organizations
 Copyright: /Copyright.md
 Master: /Master.md
 JavaScript: /Events.js
@@ -10,28 +10,26 @@ Login: /Login.md
 
 ===============================================================
 
-# Docker Users
+# Docker Organizations
 
 ===============================================================
-
-
 
 {{
 	if (exists(Posted) and Posted matches { "BrokerAccountName": PName, "MaxStorage": PMaxStorage }) then
 	(
 		max:=Number(PMaxStorage);
-		DockerCreateUser(PName, max);
-		]]+> User "((PName))" created with max storage ((ToMetricBytes(max);)). [[
+		DockerCreateOrganization(PName, max);
+		]]+> Organization "((PName))" created with max storage ((ToMetricBytes(max);)). [[
 	);
 }}
 
 <div class="docker-double">
 	<form id="create-actor" action="" method="POST">
 
-## Create User
+## Create Organization
 	
 		<p>
-			<label for="BrokerAccountName">Broker Account Name</label>  
+			<label for="BrokerAccountName">Organization Name (match with organization name on ids)</label>  
 			<input type="text" id="BrokerAccountName" name="BrokerAccountName" autofocus required/>
 		</p>
 		<p>
@@ -42,26 +40,26 @@ Login: /Login.md
 	</form>
 	<div>
 
-## Users
+## Docker Organizations
 
 {{
 PrepareTable(()->
 (
-	Page.Order:="AccountName";
-	select * from TAG.Networking.DockerRegistry.Model.DockerUser order by AccountName
+	Page.Order:="OrganizationName";
+	select * from TAG.Networking.DockerRegistry.Model.DockerOrganization order by OrganizationName
 ));
 }}
 
-| {{Header("Name","AccountName")}} | {{Header("Guid","Guid")}} | {{Header("Storage","Storage")}} |
+| {{Header("Name","OrganizationName")}} | {{Header("Guid","Guid")}} | {{Header("Storage","Storage")}} |
 |:----------:|:-------:|:-------:|
-{{foreach DockerUser in Page.Table do
+{{foreach DockerOranization in Page.Table do
 (
-	Storage := DockerUser.GetStorage();
+	Storage := DockerOranization.GetStorage();
 	Used := ToMetricBytes(Storage.UsedStorage);
 	Max := ToMetricBytes(Storage.MaxStorage);
 
-	]]| [((MarkdownEncode(UN:=DockerUser.AccountName);))](DockerUser.md?guid=((DockerUser.Guid))) [[;
-	]]| [((DockerUser.Guid.ToString();))] [[;
+	]]| [((MarkdownEncode(UN:=DockerOranization.OrganizationName);))](DockerOrganization.md?guid=((DockerOranization.Guid))) [[;
+	]]| [((DockerOranization.Guid.ToString();))] [[;
 	]]| [((Used)) of ((Max)) used] [[;
 	]]|
 [[

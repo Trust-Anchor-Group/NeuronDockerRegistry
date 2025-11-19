@@ -1,4 +1,4 @@
-Title: Users
+Title: Docker Organization
 Copyright: /Copyright.md
 Master: /Master.md
 JavaScript: /Events.js
@@ -11,18 +11,18 @@ CSS: Style.cssx
 Parameter: Guid
 
 {{
-DockerUser := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser where Guid=Guid;
+DockerOrganization := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerOrganization where Guid=Guid;
 
-if DockerUser = null then
-	NotFound("User with guid " + Guid + " does not exist.");
+if DockerOrganization = null then
+	NotFound("Organization with guid " + Guid + " does not exist.");
 
-Storage := DockerUser.GetStorage();
+Storage := DockerOrganization.GetStorage();
 
 if exists(Posted) then
 (
 	if Posted matches { "delete": Bool(PDelete) } and PDelete = true then (
-		DeleteObject(DockerUser);
-		TemporaryRedirect("DockerUsers.md");
+		DeleteObject(DockerOrganization);
+		TemporaryRedirect("DockerOrganizations.md");
 	);
 
 	if Posted matches { "maxStorage": Number(PMaxStorage) } and PMaxStorage > 0 then (
@@ -30,9 +30,9 @@ if exists(Posted) then
 		UpdateObject(Storage);
 	);
 
-		if Posted matches { "brokerAccount": String(PBrokerAccount) } then (
-		DockerUser.AccountName:=PBrokerAccount;
-		UpdateObject(DockerUser);
+		if Posted matches { "organizationName": String(POrganizationName) } then (
+		DockerOrganization.OrganizationName:=POrganizationName;
+		UpdateObject(DockerOrganization);
 	);
 );
 "";
@@ -40,7 +40,7 @@ if exists(Posted) then
 
 ================================================================================================================================
 
-# Docker User: {{DockerUser.AccountName}}
+# Docker Organization: {{DockerOrganization.OrganizationName}}
 
 ============================================================================
 
@@ -50,9 +50,9 @@ if exists(Posted) then
 		<input name="maxStorage" value="{{Storage.MaxStorage}}">
 		<button>Update</button>
 	</form>
-	<form method="POST" onsubmit="DockerAreYouSure(event, 'Are you sure you want to update the owner account?')">
+	<form method="POST" onsubmit="DockerAreYouSure(event, 'Are you sure you want to update the organization name?')">
 		<h2>Broker Account</h2>
-		<input name="brokerAccount" value="{{DockerUser.AccountName}}">
+		<input name="organizationName" value="{{DockerOrganization.OrganizationName}}">
 		<button>Update</button>
 	</form>
 <div>
@@ -74,7 +74,7 @@ StorageUsed: {{
 PrepareTable(()->
 (
 	Page.Order:="RepositoryName";
-	TAG.Networking.DockerRegistry.Model.IDockerActor.FindOwnedImages(DockerUser)
+	TAG.Networking.DockerRegistry.Model.IDockerActor.FindOwnedImages(DockerOrganization)
 ));
 
 }}
@@ -98,12 +98,12 @@ PrepareTable(()->
 ============================================================================
 
 <div class="docker-row">
-	<form method="POST" onsubmit="DockerAreYouSure(event, 'Are you sure you want to delete this user and all its repositories?')">
+	<form method="POST" onsubmit="DockerAreYouSure(event, 'Are you sure you want to delete this organization and all its repositories?')">
 		<input name="delete" value="true" hidden>
-		<button class="negButton">Delete Docker User</button>
+		<button class="negButton">Delete Docker Organization</button>
 	</form>
 	<div>
-		<p><small>Actor GUID: {{DockerUser.Guid}}</small></p>
+		<p><small>Actor GUID: {{DockerOrganization.Guid}}</small></p>
 		<p><small>Sstorage GUID: {{Storage.Guid}}</small></p>
 	</div>
 </div>

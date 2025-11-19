@@ -40,7 +40,7 @@ namespace TAG.Service.DockerRegistry.Script
         {
             ByteUnit Unit = ByteUnit.Bytes;
 
-            while (value / 1000 > 1)
+            while (value / 1000 >= 1)
             {
                 value /= 1000;
                 Unit++;
