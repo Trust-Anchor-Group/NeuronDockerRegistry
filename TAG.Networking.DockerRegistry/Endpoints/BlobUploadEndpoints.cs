@@ -8,6 +8,7 @@ using Waher.Networking.HTTP;
 using Waher.Networking.Sniffers;
 using Waher.Persistence;
 using Waher.Runtime.Cache;
+using Waher.Runtime.Threading;
 
 
 namespace TAG.Networking.DockerRegistry.Endpoints
@@ -96,9 +97,6 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             if (Storage.UsedStorage >= Storage.MaxStorage)
                 throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Storage quota exceeded."), apiHeader);
 
-            if (!HashDigest.TryParseDigest(Reference, out HashDigest Digest))
-                throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Invalid digest."), apiHeader);
-
             Guid Uuid = Guid.NewGuid();
 
             this.uploads[Uuid] = new BlobUpload(Uuid, Request.User.UserName);
@@ -167,6 +165,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
                 throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
 
+            using Semaphore Semaphore = await IDockerActor.StorageSemaphore(Actor);
             DockerStorage Storage = await Actor.GetStorage();
 
             HashDigest Digest;
