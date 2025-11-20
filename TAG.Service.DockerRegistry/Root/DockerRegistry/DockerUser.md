@@ -3,6 +3,7 @@ Copyright: /Copyright.md
 Master: /Master.md
 JavaScript: /Events.js
 JavaScript: Docker.js
+JavaScript: /TargetBlank.js
 Script: /Controls/SimpleTable.script
 UserVariable: User
 Privilege: Admin.Docker
@@ -69,7 +70,8 @@ StorageUsed: {{
 }}
 </h2>
 
-<br>
+<div class="docker-double">
+
 {{
 PrepareTable(()->
 (
@@ -93,6 +95,26 @@ PrepareTable(()->
 )
 }}
 
+{{
+PrepareTable(()->
+(
+	Page.Order:="Repositories";
+	select * from DockerRepository where OwnerGuid = Guid
+));
+
+}}
+
+| {{Header("Repository","RepositoryName")}} | 
+|:----------|
+{{foreach Repository in Page.Table do
+(
+	]]| ((Repository.RepositoryName)) [[;
+	]]|
+[[
+)
+}}
+
+</div>
 
 
 ============================================================================

@@ -30,8 +30,11 @@ namespace TAG.Service.DockerRegistry.Script
         /// <inheritdoc/>
         public override IElement Evaluate(IElement Argument, Variables Variables)
         {
-            if (!(Argument.AssociatedObjectValue is double ByteCount && Math.Floor(ByteCount) == ByteCount))
+            if (!(Argument.AssociatedObjectValue is double ByteCount))
                 throw new Exception("First argument should be an integer number of bytes.");
+
+            if (!(Math.Floor(ByteCount) == ByteCount))
+                throw new Exception("First argument needs to be a whole number");
 
             return new StringValue(ToBinaryBytes(ByteCount));
         }

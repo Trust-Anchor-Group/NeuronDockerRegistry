@@ -12,6 +12,17 @@ Privilege: Admin.Docker
 Login: /Login.md
 Parameter: Purge
 
+{{
+	if exists(Posted) then (
+		if Posted matches { "forceClean": Bool(PForceClean) } then (
+			]] <p>Blobs cleaned: ((TAG.Service.DockerRegistry.RegistryService.Instance.CleanUnusedBlobs();)) </p>[[;
+			]] <p>((TAG.Service.DockerRegistry.RegistryService.Instance.CleanUnmanagedRepositories();)) </p>[[;
+		);
+	);
+	"";
+}}
+
+
 ================================================================================================================================
 
 Docker Registry Settings
@@ -27,7 +38,12 @@ Docker Registry Settings
 
 <button class="posButton"{{
 if User.HasPrivilege("Admin.Communication.DockerRegistry") and User.HasPrivilege("Admin.Communication.Sniffer") then
-	" onclick=\"OpenSniffer('Sniffer.md')\""
+	" onclick=\"OpenSniffer('Sniffers/Sniffer.md')\""
 else
 	" disabled"
 }}>Sniffer</button>
+
+<form method="POST">
+<input name="forceClean" value="true" hidden/>
+<button>Force Clean</button>
+</form>
