@@ -18,14 +18,11 @@ Parameter: Guid
 
     if Exists(Posted) then (
         if Posted matches { "resync": Bool(PResync )} then (
-            actors:= Join(
-                select  * from TAG.Networking.DockerRegistry.Model.DockerOrganization where Storage=Guid,
-                select  * from TAG.Networking.DockerRegistry.Model.DockerUser where Storage=Guid
-            );
-            if (actors.Length < 1) then
+            actor:=select top 1 * from DockerActor where Storage=Storage.Guid;
+
+            if actor = null then
                 NotFound("There is no owner of this storage");
-            actor:=actors[0];
-            TAG.Networking.DockerRegistry.Model.IDockerActor.ReSyncStorage(actor);
+            actor.ReSyncStorage();
         );
     );
 }}

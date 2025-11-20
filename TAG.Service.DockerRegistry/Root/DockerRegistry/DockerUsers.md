@@ -52,7 +52,7 @@ PrepareTable(()->
 ));
 }}
 
-| {{Header("Name","AccountName")}} | {{Header("Guid","Guid")}} | {{Header("Storage","Storage")}} |
+| {{Header("Name","AccountName")}} | {{Header("Guid","ActorGuid")}} | {{Header("Storage","Storage")}} |
 |:----------:|:-------:|:-------:|
 {{foreach DockerUser in Page.Table do
 (
@@ -60,8 +60,8 @@ PrepareTable(()->
 	Used := ToMetricBytes(Storage.UsedStorage);
 	Max := ToMetricBytes(Storage.MaxStorage);
 
-	]]| [((MarkdownEncode(UN:=DockerUser.AccountName);))](DockerUser.md?guid=((DockerUser.Guid))) [[;
-	]]| [((DockerUser.Guid.ToString();))] [[;
+	]]| [((MarkdownEncode(UN:=DockerUser.AccountName);))](DockerUser.md?guid=((DockerUser.ObjectId))) [[;
+	]]| [((DockerUser.ActorGuid.ToString();))] [[;
 	]]| [((Used)) of ((Max)) used] [[;
 	]]|
 [[

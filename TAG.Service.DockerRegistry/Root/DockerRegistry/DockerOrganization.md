@@ -11,13 +11,13 @@ CSS: Style.cssx
 Parameter: Guid
 
 {{
-DockerOrganization := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerOrganization where Guid=Guid;
+DockerOrganization := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerOrganization where ObjectId=Guid;
 
 if DockerOrganization = null then
 	NotFound("Organization with guid " + Guid + " does not exist.");
 
-Storage := DockerOrganization.GetStorage();
-
+Actor := DockerOrganization.GetActor();
+Storage := Actor.GetStorage();
 if exists(Posted) then
 (
 	if Posted matches { "delete": Bool(PDelete) } and PDelete = true then (
@@ -74,7 +74,7 @@ StorageUsed: {{
 PrepareTable(()->
 (
 	Page.Order:="RepositoryName";
-	TAG.Networking.DockerRegistry.Model.IDockerActor.FindOwnedImages(DockerOrganization)
+	Actor.FindOwnedImages();
 ));
 
 }}
@@ -103,7 +103,7 @@ PrepareTable(()->
 		<button class="negButton">Delete Docker Organization</button>
 	</form>
 	<div>
-		<p><small>Actor GUID: {{DockerOrganization.Guid}}</small></p>
+		<p><small>Actor GUID: {{DockerOrganization.ActorGuid}}</small></p>
 		<p><small>Sstorage GUID: {{Storage.Guid}}</small></p>
 	</div>
 </div>

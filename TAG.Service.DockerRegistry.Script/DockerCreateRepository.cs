@@ -79,18 +79,9 @@ namespace TAG.Service.DockerRegistry.Script
             if (!(Arguments[2].AssociatedObjectValue is bool IsPrivate))
                 throw new ScriptRuntimeException("Third agrument should be a bool.", this);
 
+            DockerActor Actor = await Database.FindFirstIgnoreRest<DockerActor>(new FilterAnd(new FilterFieldEqualTo("Guid", OwnerGuid)));
 
-            DockerUser User = await Database.FindFirstIgnoreRest<DockerUser>(new FilterAnd(new FilterFieldEqualTo("Guid", OwnerGuid)));
-            DockerOrganization Org = await Database.FindFirstIgnoreRest<DockerOrganization>(new FilterAnd(new FilterFieldEqualTo("Guid", OwnerGuid)));
-
-            DockerActorType Type = DockerActorType.None;
-
-            if (!(User is null))
-                Type = DockerActorType.User;
-            else if (!(Org is null))
-                Type = DockerActorType.Organization;
-
-            if (Type == DockerActorType.None)
+            if (Actor is null)
                 throw new ScriptRuntimeException("No owner with Guid " + OwnerGuid.ToString(), this);
 
             DockerRepository NewRepo = new DockerRepository()
@@ -98,7 +89,6 @@ namespace TAG.Service.DockerRegistry.Script
                 RepositoryName = Name,
                 IsPrivate = IsPrivate,
                 OwnerGuid = OwnerGuid,
-                OwnerType = Type,
             };
 
             await Database.Insert(NewRepo);

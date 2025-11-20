@@ -42,7 +42,7 @@ Docker Repositories
 		</select>
 	</p>
 
-	<button>Create user</button>
+	<button>Create repository</button>
 </form>
 
 
@@ -58,12 +58,12 @@ PrepareTable(()->
 ));
 }}
 
-| {{Header("Name","DockerRepositoryName")}} | {{Header("Owner Type","OwnerType")}} |
+| {{Header("Name","DockerRepositoryName")}} | {{Header("Owner Guid","OwnerGuid")}} |
 |:----------|:-------:|
 {{foreach Repository in Page.Table do
 (
 	]]| [((MarkdownEncode(UN:=Repository.RepositoryName);))] [[;
-	]]| [((MarkdownEncode(EM:=Repository.OwnerType);))] [[;
+	]]| [((MarkdownEncode(EM:=Repository.OwnerGuid);))] [[;
     ]]|
 [[
 )

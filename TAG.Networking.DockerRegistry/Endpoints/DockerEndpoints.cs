@@ -23,7 +23,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             this.sniffers = Sniffers;
         }
 
-        protected void AssertRepositoryPrivilages(IDockerActor Actor, DockerRepository Repository, DockerRepository.RepositoryAction Action, HttpRequest Request)
+        protected void AssertRepositoryPrivilages(DockerActor Actor, DockerRepository Repository, DockerRepository.RepositoryAction Action, HttpRequest Request)
         {
             bool HasPermission = Repository.HasPermission(Actor, Action);
             if (!HasPermission)
@@ -52,7 +52,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             }
         }
 
-        protected void Sniff(HttpRequest Request, IDockerActor Actor)
+        protected void Sniff(HttpRequest Request, DockerActor Actor)
         {
             if (Request.Header.Method == "HEAD")
                 return;
@@ -70,18 +70,6 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                     Builder.Append("Method: ");
                     Builder.Append(Request.Header.Method);
                     Builder.AppendLine();
-                    Builder.Append("Actor (");
-
-                    if (Actor is DockerUser User)
-                    {
-                        Builder.Append("User) ");
-                        Builder.Append(User.AccountName);
-                    }
-                    else if (Actor is DockerOrganization Org)
-                    {
-                        Builder.Append("Org) ");
-                        Builder.Append(Org.OrganizationName);
-                    }
 
                     Sniffer.ReceiveText(Builder.ToString());
                 }

@@ -16,7 +16,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
         }
 
-        public async Task GET(HttpRequest Request, HttpResponse Response, IDockerActor Actor, DockerRepository Repository, string Reference)
+        public async Task GET(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Pull, Request);
 

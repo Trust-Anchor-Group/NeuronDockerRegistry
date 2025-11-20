@@ -76,13 +76,13 @@ namespace TAG.Networking.DockerRegistry.Model
 
         public async Task RegisterDanglingBlob(DanglingDockerBlob blob)
         {
-            MaxStorage += blob.Size;
+            UsedStorage += blob.Size;
             IncrementDigest(blob.Digest);
         }
 
         public async Task UnregisterDanglingBlob(DanglingDockerBlob blob)
         {
-            MaxStorage -= blob.Size;
+            UsedStorage -= blob.Size;
             DecrementDigest(blob.Digest);
         }
 

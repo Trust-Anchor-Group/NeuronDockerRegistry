@@ -32,7 +32,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
         // A HEAD request can also be issued to this endpoint to obtain resource information without receiving all data.
         // <summary>
 
-        public async Task GET(HttpRequest Request, HttpResponse Response, IDockerActor Actor, DockerRepository Repository, string Reference)
+        public async Task GET(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Pull, Request);
 
@@ -58,10 +58,10 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
             await Response.Return(Image.Manifest);
         }
-        public async Task DELETE(HttpRequest Request, HttpResponse Response, IDockerActor Actor, DockerRepository Repository, string Reference)
+        public async Task DELETE(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
-            using Semaphore Semaphore = await Semaphores.BeginWrite("DockerRegistry_StorageAffecting_" + Actor.GetGuid());
+            using Semaphore Semaphore = await Semaphores.BeginWrite("DockerRegistry_StorageAffecting_" + Actor.Guid);
             DockerStorage ActorStorage = await Actor.GetStorage();
 
             if (!HashDigest.TryParseDigest(Reference, out HashDigest Digest))
@@ -87,9 +87,9 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             await Response.SendResponse();
         }
 
-        public async Task PUT(HttpRequest Request, HttpResponse Response, IDockerActor Actor, DockerRepository Repository, string Reference)
+        public async Task PUT(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
-            using Semaphore Semaphore = await IDockerActor.StorageSemaphore(Actor);
+            using Semaphore Semaphore = await Actor.StorageSemaphore();
             DockerStorage ActorStorage = await Actor.GetStorage();
 
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);

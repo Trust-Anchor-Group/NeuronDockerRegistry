@@ -14,14 +14,12 @@ namespace TAG.Networking.DockerRegistry
     [TypeName(TypeNameSerialization.None)]
     [Index("RepositoryName")]
     [Index("OwnerGuid")]
-    [Index("OwnerType")]
     [Index("IsPrivate")]
     public class DockerRepository
     {
         private string objectId;
         private string repositoryName;
         private Guid ownerGuid;
-        private DockerActorType ownerType;
         private bool isPrivate;
 
         /// <summary>
@@ -61,28 +59,18 @@ namespace TAG.Networking.DockerRegistry
             set => this.ownerGuid = value;
         }
 
-        /// <summary>
-        /// Repository owner Guid
-        /// </summary>
-        public DockerActorType OwnerType
-        {
-            get => this.ownerType;
-            set => this.ownerType = value;
-        }
-
         public DockerRepository()
         {
 
         }
 
-        public DockerRepository(string RepositoryName, IDockerActor Actor)
+        public DockerRepository(string RepositoryName, DockerActor Actor)
         {
             this.repositoryName = RepositoryName;
-            this.ownerGuid = Actor.GetGuid();
-            this.ownerType = Actor.GetActorType();
+            this.ownerGuid = Actor.Guid;
         }
 
-        public bool HasPermission(IDockerActor Actor, RepositoryAction Action)
+        public bool HasPermission(DockerActor Actor, RepositoryAction Action)
         {
             switch (Action)
             {
@@ -92,7 +80,7 @@ namespace TAG.Networking.DockerRegistry
                     break;
                 case RepositoryAction.Delete:
                 case RepositoryAction.Push:
-                    if (Actor.GetGuid() == OwnerGuid && Actor.GetActorType() == OwnerType)
+                    if (Actor.Guid == OwnerGuid)
                         return true;
                     break;
             }
@@ -100,17 +88,9 @@ namespace TAG.Networking.DockerRegistry
             return false;
         }
 
-        public async Task<IDockerActor> GetOwner()
+        public async Task<DockerActor> GetOwner()
         {
-            switch (OwnerType)
-            {
-                case DockerActorType.User:
-                    return await Database.FindFirstDeleteRest<DockerUser>(new FilterAnd(new FilterFieldEqualTo("Guid", OwnerGuid)));
-                case DockerActorType.Organization:
-                    return await Database.FindFirstDeleteRest<DockerOrganization>(new FilterAnd(new FilterFieldEqualTo("Guid", OwnerGuid)));
-                default:
-                    throw new Exception("Invalid actor type.");
-            }
+            return await Database.FindFirstDeleteRest<DockerActor>(new FilterAnd(new FilterFieldEqualTo("Guid", OwnerGuid)));
         }
 
         public static bool ValidateRepositoryName(string name)

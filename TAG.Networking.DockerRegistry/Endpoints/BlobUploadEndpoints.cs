@@ -41,7 +41,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             this.blobStorage = BlobStorage;
         }
 
-        public async Task GET(HttpRequest Request, HttpResponse Response, ByteRangeInterval Interval, IDockerActor Actor, DockerRepository Repository, string Reference)
+        public async Task GET(HttpRequest Request, HttpResponse Response, ByteRangeInterval Interval, DockerActor Actor, DockerRepository Repository, string Reference)
         {
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
@@ -88,7 +88,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             return;
         }
 
-        public async Task POST(HttpRequest Request, HttpResponse Response, IDockerActor Actor, DockerRepository Repository, string Reference)
+        public async Task POST(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
@@ -109,7 +109,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             await Response.SendResponse();
         }
 
-        public async Task DELETE(HttpRequest Request, HttpResponse Response, IDockerActor Actor, DockerRepository Repository, string Reference)
+        public async Task DELETE(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
 
@@ -126,7 +126,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             return;
         }
 
-        public async Task PATCH(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval, IDockerActor Actor, DockerRepository Repository, string Reference)
+        public async Task PATCH(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval, DockerActor Actor, DockerRepository Repository, string Reference)
         {
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
@@ -155,7 +155,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             }
         }
 
-        public async Task PUT(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval, IDockerActor Actor, DockerRepository Repository, string Reference)
+        public async Task PUT(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval, DockerActor Actor, DockerRepository Repository, string Reference)
         {
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
@@ -165,7 +165,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
                 throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
 
-            using Semaphore Semaphore = await IDockerActor.StorageSemaphore(Actor);
+            using Semaphore Semaphore = await Actor.StorageSemaphore();
             DockerStorage Storage = await Actor.GetStorage();
 
             HashDigest Digest;
@@ -189,7 +189,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                 {
                     Created = DateTime.Now,
                     Digest = Digest,
-                    Owner = Actor.GetGuid(),
+                    Owner = Actor.Guid,
                     Size = UploadRecord.File.Length
                 };
 

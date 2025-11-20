@@ -182,7 +182,7 @@ namespace TAG.Networking.DockerRegistry
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
-                IDockerActor Actor = await GetEffectiveActor(Request, Repository);
+                DockerActor Actor = await GetEffectiveActor(Request, Repository);
 
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
@@ -258,7 +258,7 @@ namespace TAG.Networking.DockerRegistry
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
-                IDockerActor Actor = await GetEffectiveActor(Request, Repository);
+                DockerActor Actor = await GetEffectiveActor(Request, Repository);
 
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
@@ -293,7 +293,7 @@ namespace TAG.Networking.DockerRegistry
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
-                IDockerActor Actor = await GetEffectiveActor(Request, Repository);
+                DockerActor Actor = await GetEffectiveActor(Request, Repository);
 
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
@@ -349,7 +349,7 @@ namespace TAG.Networking.DockerRegistry
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
-                IDockerActor Actor = await GetEffectiveActor(Request, Repository);
+                DockerActor Actor = await GetEffectiveActor(Request, Repository);
 
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
@@ -403,7 +403,7 @@ namespace TAG.Networking.DockerRegistry
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
-                IDockerActor Actor = await GetEffectiveActor(Request, Repository);
+                DockerActor Actor = await GetEffectiveActor(Request, Repository);
 
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
@@ -445,29 +445,29 @@ namespace TAG.Networking.DockerRegistry
             return Org;
         }
 
-        private async Task<IDockerActor[]> GetActors(HttpRequest Request)
+        private async Task<DockerActor[]> GetActors(HttpRequest Request)
         {
             if (!(Request.User is AccountUser AccountUser))
                 throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
 
             Account Account = AccountUser.Account;
 
-            List<IDockerActor> Actors = new List<IDockerActor>();
+            List<DockerActor> Actors = new List<DockerActor>();
 
             DockerUser User = await GetDockerUser(Account);
             if (!(User is null))
-                Actors.Add(User);
+                Actors.Add(await User.GetActor());
 
             DockerOrganization Organization = await GetOrganizationActor(Account);
             if (!(Organization is null))
-                Actors.Add(Organization);
+                Actors.Add(await Organization.GetActor());
 
             return Actors.ToArray();
         }
 
-        private async Task<IDockerActor> GetEffectiveActor(HttpRequest Request, DockerRepository Repository)
+        private async Task<DockerActor> GetEffectiveActor(HttpRequest Request, DockerRepository Repository)
         {
-            IDockerActor[] Actors = await GetActors(Request);
+            DockerActor[] Actors = await GetActors(Request);
 
             if (Actors.Length == 0)
                 throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
@@ -475,26 +475,13 @@ namespace TAG.Networking.DockerRegistry
             if (Actors.Length == 1)
                 return Actors[0];
 
-            IDockerActor Chosen = Actors[0];
+            DockerActor Chosen = Actors[0];
 
             for (int i = 1; i < Actors.Length; i++)
             {
-                IDockerActor Other = Actors[i];
-
-                switch (Repository.OwnerType)
-                {
-                    case DockerActorType.User:
-                        if (Other is DockerUser User && User.Guid == Repository.OwnerGuid)
-                            Chosen = User;
-                        break;
-                    case DockerActorType.Organization:
-                        if (Other is DockerOrganization Organization && Organization.Guid == Repository.OwnerGuid)
-                            Chosen = Organization;
-                        break;
-                    default:
-                        continue;
-                }
-
+                DockerActor Other = Actors[i];
+                if (Repository.OwnerGuid == Other.Guid)
+                    Chosen = Other;
             }
 
             return Chosen;
@@ -507,7 +494,7 @@ namespace TAG.Networking.DockerRegistry
             if (Repository == null && AutoCreateRepositories)
             {
                 return null;
-                //throw new System.NotImplementedException("race conditions might apperer, and i dont know how to make unique feild in the obj database");
+                /*
                 string Owner = Request.User.UserName;
                 string RepositoryBase = Owner + "/";
 
@@ -525,6 +512,7 @@ namespace TAG.Networking.DockerRegistry
                         break;
                     }
                 }
+                */
             }
 
             return Repository;

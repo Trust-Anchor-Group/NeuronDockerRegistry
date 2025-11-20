@@ -20,7 +20,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 			this.blobStorage = BlobStorage;
 		}
 
-		public async Task GET(HttpRequest Request, HttpResponse Response, ByteRangeInterval Interval,  IDockerActor Actor, DockerRepository Repository, string Reference)
+		public async Task GET(HttpRequest Request, HttpResponse Response, ByteRangeInterval Interval, DockerActor Actor, DockerRepository Repository, string Reference)
 		{
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Pull, Request);
 
@@ -53,7 +53,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 			await Response.SendResponse();
 		}
 
-		public async Task DELETE(HttpRequest Request, HttpResponse Response, IDockerActor Actor, DockerRepository Repository, string Reference)
+		public async Task DELETE(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
 		{
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
 

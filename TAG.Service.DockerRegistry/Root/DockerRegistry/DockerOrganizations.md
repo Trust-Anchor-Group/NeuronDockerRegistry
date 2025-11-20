@@ -50,7 +50,7 @@ PrepareTable(()->
 ));
 }}
 
-| {{Header("Name","OrganizationName")}} | {{Header("Guid","Guid")}} | {{Header("Storage","Storage")}} |
+| {{Header("Name","OrganizationName")}} | {{Header("Actor Guid","ActorGuid")}} | {{Header("Storage","Storage")}} |
 |:----------:|:-------:|:-------:|
 {{foreach DockerOranization in Page.Table do
 (
@@ -58,8 +58,8 @@ PrepareTable(()->
 	Used := ToMetricBytes(Storage.UsedStorage);
 	Max := ToMetricBytes(Storage.MaxStorage);
 
-	]]| [((MarkdownEncode(UN:=DockerOranization.OrganizationName);))](DockerOrganization.md?guid=((DockerOranization.Guid))) [[;
-	]]| [((DockerOranization.Guid.ToString();))] [[;
+	]]| [((MarkdownEncode(UN:=DockerOranization.OrganizationName);))](DockerOrganization.md?guid=((DockerOranization.ObjectId))) [[;
+	]]| [((DockerOranization.ActorGuid.ToString();))] [[;
 	]]| [((Used)) of ((Max)) used] [[;
 	]]|
 [[

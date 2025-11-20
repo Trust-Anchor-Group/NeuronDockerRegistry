@@ -12,10 +12,12 @@ CSS: Style.cssx
 Parameter: Guid
 
 {{
-DockerUser := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser where Guid=Guid;
+DockerUser := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser where ObjectId=Guid;
 
 if DockerUser = null then
-	NotFound("User with guid " + Guid + " does not exist.");
+	NotFound("User with object id " + Guid + " does not exist.");
+
+Actor:=DockerUser.GetActor();
 
 Storage := DockerUser.GetStorage();
 
@@ -40,7 +42,7 @@ if exists(Posted) then
 }}
 
 ================================================================================================================================
-
+	
 # Docker User: {{DockerUser.AccountName}}
 
 ============================================================================
@@ -76,7 +78,7 @@ StorageUsed: {{
 PrepareTable(()->
 (
 	Page.Order:="RepositoryName";
-	TAG.Networking.DockerRegistry.Model.IDockerActor.FindOwnedImages(DockerUser)
+	Actor.FindOwnedImages()
 ));
 
 }}
@@ -126,7 +128,7 @@ PrepareTable(()->
 	</form>
 	<button onclick="OpenPage('DockerStorage.md?Guid={{Storage.Guid}}')">Storage</button>
 	<div>
-		<p><small>Actor GUID: {{DockerUser.Guid}}</small></p>
+		<p><small>Actor GUID: {{Actor.Guid}}</small></p>
 		<p><small>Sstorage GUID: {{Storage.Guid}}</small></p>
 	</div>
 </div>

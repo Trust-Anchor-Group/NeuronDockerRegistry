@@ -71,23 +71,29 @@ namespace TAG.Service.DockerRegistry.Script
 
             long MaxStorage = (long)MaxStorageValue;
 
+            DockerActor Actor = new DockerActor()
+            {
+                Guid = Guid.NewGuid(),
+                Storage = Guid.NewGuid(),
+            };
+
             DockerUser NewUser = new DockerUser()
             {
                 AccountName = Name,
-                Guid = Guid.NewGuid(),
-                Storage = Guid.NewGuid(),
+                ActorGuid = Actor.Guid,
             };
 
             DockerStorage Storage = new DockerStorage()
             {
                 MaxStorage = MaxStorage,
-                Guid = NewUser.Storage,
+                Guid = Actor.Storage,
                 BlobCounter = new DigestReferenceCounter[] { },
                 UsedStorage = 0
             };
 
-            await Database.Insert(NewUser);
             await Database.Insert(Storage);
+            await Database.Insert(Actor);
+            await Database.Insert(NewUser);
 
             return new ObjectValue(NewUser);
         }

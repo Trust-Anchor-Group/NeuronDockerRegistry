@@ -4,20 +4,18 @@ using System.Threading.Tasks;
 using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
-
 namespace TAG.Networking.DockerRegistry.Model
 {
     [CollectionName("DockerOrganization")]
     [Index("Guid")]
     [Index("OrganizationName")]
-    public class DockerOrganization : IDockerActor
+    public class DockerOrganization : DockerActorAuthentification
     {
         /// <summary>
         /// A Docker User
         /// </summary>
         public DockerOrganization()
         {
-
         }
 
         /// <summary>
@@ -29,36 +27,15 @@ namespace TAG.Networking.DockerRegistry.Model
         /// <summary>
         /// Actor guid
         /// </summary>
-        public Guid Guid { get; set; }
+        public Guid ActorGuid { get; set; }
 
         /// <summary>
         /// The username of the broker account
         /// </summary>
 		public CaseInsensitiveString OrganizationName { get; set; }
-
-        /// <summary>
-        /// Docker storage guid
-        /// </summary>
-        public Guid Storage;
-
-        public async Task<DockerStorage> GetStorage()
+        public override Guid GetActorGuid()
         {
-            return await Database.FindFirstIgnoreRest<DockerStorage>(new FilterAnd(new FilterFieldEqualTo("Guid", Storage)));
-        }
-
-        public bool HasPermision(DockerRepository Repository, DockerRepository.RepositoryAction Action)
-        {
-            return false;
-        }
-
-        public Guid GetGuid()
-        {
-            return Guid;
-        }
-
-        public DockerActorType GetActorType()
-        {
-            return DockerActorType.Organization;
+            return ActorGuid;
         }
     }
 }
