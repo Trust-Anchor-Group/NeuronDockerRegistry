@@ -3,7 +3,6 @@ Master: /Master.md
 JavaScript: /Events.js
 JavaScript: /Sniffers/Sniffer.js
 CSS: /Sniffers/Sniffer.css
-CSS: Style.css
 UserVariable: User
 Privilege: Admin.Communication.Sniffer
 Privilege: Admin.Communication.DockerRegistry

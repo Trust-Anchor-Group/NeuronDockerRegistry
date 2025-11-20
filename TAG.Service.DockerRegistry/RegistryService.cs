@@ -11,7 +11,6 @@ using Waher.Networking.HTTP;
 using Waher.Networking.HTTP.Authentication;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
-using Waher.Persistence.Serialization;
 using Waher.Runtime.Inventory;
 using Waher.Runtime.Timing;
 using Waher.Security.JWT;
@@ -30,6 +29,7 @@ namespace TAG.Service.DockerRegistry
         private static RegistryService instance;
 
         private RegistryServerV2 server;
+        private LiveStorageView liveStorageView;
 
         private Scheduler blobClearSchedule;
 
@@ -82,8 +82,11 @@ namespace TAG.Service.DockerRegistry
             this.server = new RegistryServerV2(Path.Combine(Gateway.AppDataFolder, "DockerRegistry"), Schemes.ToArray());
             Gateway.HttpServer?.Register(this.server);
 
+            this.liveStorageView = new LiveStorageView("/DockerRegistry/live-storage-view");
+            Gateway.HttpServer?.Register(this.liveStorageView);
+
             blobClearSchedule = new Scheduler();
-            CleanSchedule(null).Start();
+            CleanSchedule(null);
 
             Database.ObjectDeleted += async (object Sender, ObjectEventArgs args) =>
             {
@@ -99,6 +102,7 @@ namespace TAG.Service.DockerRegistry
 
             return Task.CompletedTask;
         }
+
         private async Task CleanSchedule(object State)
         {
             blobClearSchedule.Add(System.DateTime.Now.AddDays(1), CleanSchedule, null);
@@ -148,6 +152,13 @@ namespace TAG.Service.DockerRegistry
                 Gateway.HttpServer?.Unregister(this.server);
                 this.server.Dispose();
                 this.server = null;
+            }
+
+            if (!(this.liveStorageView is null))
+            {
+                Gateway.HttpServer?.Unregister(this.liveStorageView);
+                this.liveStorageView.Dispose();
+                this.liveStorageView = null;
             }
 
             return Task.CompletedTask;

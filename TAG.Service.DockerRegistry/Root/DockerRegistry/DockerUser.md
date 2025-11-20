@@ -102,6 +102,7 @@ PrepareTable(()->
 		<input name="delete" value="true" hidden>
 		<button class="negButton">Delete Docker User</button>
 	</form>
+	<button onclick="OpenPage('DockerStorage.md?Guid={{Storage.Guid}}')">Storage</button>
 	<div>
 		<p><small>Actor GUID: {{DockerUser.Guid}}</small></p>
 		<p><small>Sstorage GUID: {{Storage.Guid}}</small></p>

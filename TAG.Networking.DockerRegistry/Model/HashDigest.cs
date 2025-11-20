@@ -2,6 +2,8 @@
 using System.IO;
 using System.Linq;
 using System.Text;
+using Waher.Content.Json;
+using Waher.Runtime.Inventory;
 using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry.Model
@@ -36,6 +38,12 @@ namespace TAG.Networking.DockerRegistry.Model
 
 		public static bool TryParseDigest(string s, out HashDigest Digest)
 		{
+			if (string.IsNullOrEmpty(s))
+			{
+				Digest = null;
+				return false;
+			}
+
 			HashFunction Function = default;
 			Digest = null;
 
@@ -75,7 +83,7 @@ namespace TAG.Networking.DockerRegistry.Model
 			if (this.HashFunction != Other.HashFunction)
 				return false;
 			return this.Hash.SequenceEqual(Other.Hash);
-	
+
 		}
 
 		public static bool operator ==(HashDigest D1, HashDigest D2)

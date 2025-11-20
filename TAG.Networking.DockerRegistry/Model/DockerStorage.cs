@@ -1,16 +1,18 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
+using Waher.Content.Json;
 using Waher.Events;
 using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
+using Waher.Runtime.Inventory;
 using Waher.Runtime.Threading;
 namespace TAG.Networking.DockerRegistry.Model
 {
     [CollectionName("DockerStorage")]
     [Index("Guid")]
-    public class DockerStorage
+    public class DockerStorage : IJsonEncodingHint
     {
         /// <summary>
         /// Object ID
@@ -37,6 +39,8 @@ namespace TAG.Networking.DockerRegistry.Model
         /// Amount of unique blob data referenced in bytes
         /// </summary>
         public long UsedStorage { get; set; }
+
+        public Grade CanEncodeJson => Grade.Perfect;
 
         /// <summary>
         /// A blob reference counter and storage tracker
