@@ -2,7 +2,7 @@
 using System.Text;
 using System.Threading.Tasks;
 using TAG.Networking.DockerRegistry.Model;
-using TAG.Networking.DockerRegistry.Model.Oci;
+using TAG.Networking.DockerRegistry.Model.OciImages;
 using Waher.Content;
 using Waher.Runtime.Inventory;
 
