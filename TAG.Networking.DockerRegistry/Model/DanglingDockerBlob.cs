@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Threading.Tasks;
-using Waher.Content.Html.Elements;
-using Waher.Content.Markdown.Model.SpanElements;
 using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
@@ -49,10 +47,10 @@ namespace TAG.Networking.DockerRegistry.Model
 
         public async Task UnregistreFromStorage()
         {
-            IDockerActor Actor = await Database.FindFirstIgnoreRest<IDockerActor>(new FilterAnd(new FilterFieldEqualTo("Guid", Owner)));
+            DockerActor Actor = await Database.FindFirstIgnoreRest<DockerActor>(new FilterAnd(new FilterFieldEqualTo("Guid", Owner)));
             if (Actor != null)
             {
-                using Semaphore Semaphore = await IDockerActor.StorageSemaphore(Actor);
+                using Semaphore Semaphore = await Actor.StorageSemaphore();
                 DockerStorage Storage = await Actor.GetStorage();
                 await Storage.UnregisterDanglingBlob(this);
             }
