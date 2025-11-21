@@ -1,9 +1,11 @@
 ﻿using System;
+using Waher.Content;
 using Waher.Script;
 using Waher.Script.Abstraction.Elements;
 using Waher.Script.Exceptions;
 using Waher.Script.Model;
 using Waher.Script.Objects;
+using Waher.Script.Units;
 
 namespace TAG.Service.DockerRegistry.Script
 {
@@ -41,26 +43,17 @@ namespace TAG.Service.DockerRegistry.Script
 
         static string ToBinaryBytes(double value)
         {
-            ByteUnit Unit = ByteUnit.Bytes;
+            byte NumberDecimal = 0;
+            Prefix Unit = Prefix.None;
 
-            while (value / 1000 >= 1)
+            while (value >= 1024)
             {
-                value /= 1000;
-                Unit++;
+                value /= 1024;
+                NumberDecimal = 2;
+                Unit += 3;
             }
 
-            value = Math.Round(value, 2);
-            return $"{value:0.##}{Unit.ToString()}";
-        }
-
-        enum ByteUnit
-        {
-            Bytes = 0,
-            KB = 1,
-            MB = 2,
-            GB = 3,
-            TB = 4,
-            PB = 5,
+            return $"{CommonTypes.Encode(value, NumberDecimal)} {Prefixes.ToString(Unit)}B";
         }
     }
 }
