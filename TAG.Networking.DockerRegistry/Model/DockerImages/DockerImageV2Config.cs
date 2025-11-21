@@ -1,9 +1,7 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 
-namespace TAG.Networking.DockerRegistry.Model.Docker
+namespace TAG.Networking.DockerRegistry.Model.DockerImages
 {
-	[Serializable]
 	public class DockerImageV2Config : IImageConfig
 	{
 		public string MediaType { get; set; }

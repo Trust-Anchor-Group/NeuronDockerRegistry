@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace TAG.Networking.DockerRegistry.Model.Oci
+namespace TAG.Networking.DockerRegistry.Model.OciImages
 {
-	[Serializable]
 	public class OciPlatform
 	{
 		public OciPlatform()

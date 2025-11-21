@@ -1,19 +1,24 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace TAG.Networking.DockerRegistry.Model.Oci
+namespace TAG.Networking.DockerRegistry.Model.OciImages
 {
-	[Serializable]
-	public class OciImageConfig : IImageConfig, IOciContentDescriptor
+	public class OciImageLayer : IImageLayer, IOciContentDescriptor
 	{
-		public OciImageConfig()
+		public OciImageLayer()
 		{
+		
 		}
-		public OciImageConfig(Dictionary<string, object> Json)
+		public OciImageLayer(Dictionary<string, object> Json)
 		{
 			OciContentDescriptor Descriptor = OciContentDescriptor.Parse(Json);
 
-			if (!(Descriptor.MediaType == "application/vnd.oci.image.config.v1+json"))
+			if (!(
+				Descriptor.MediaType == "application/vnd.oci.image.layer.v1.tar" ||
+				Descriptor.MediaType == "application/vnd.oci.image.layer.v1.tar+gzip" ||
+				Descriptor.MediaType == "application/vnd.oci.image.layer.nondistributable.v1.tar" ||
+				Descriptor.MediaType == "application/vnd.oci.image.layer.nondistributable.v1.tar+gzip"
+			))
 				throw new Exception("Invalid media type");
 
 			MediaType = Descriptor.MediaType;

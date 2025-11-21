@@ -1,4 +1,4 @@
-﻿namespace TAG.Networking.DockerRegistry.Model.Docker
+﻿namespace TAG.Networking.DockerRegistry.Model.DockerImages
 {
 	internal interface IDockerImageV2ContentDescriptor
 	{

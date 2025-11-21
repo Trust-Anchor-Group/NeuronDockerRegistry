@@ -1,9 +1,9 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace TAG.Networking.DockerRegistry.Model.Docker
+namespace TAG.Networking.DockerRegistry.Model.DockerImages
 {
-	internal class DockerImageV2ContentDescriptor : IDockerImageV2ContentDescriptor
+	public class DockerImageV2ContentDescriptor : IDockerImageV2ContentDescriptor
 	{
 		public static DockerImageV2ContentDescriptor Parse(Dictionary<string, object> Json)
 		{

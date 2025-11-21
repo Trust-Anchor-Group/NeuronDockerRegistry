@@ -1,6 +1,6 @@
 ﻿using System.Collections.Generic;
 
-namespace TAG.Networking.DockerRegistry.Model.Oci
+namespace TAG.Networking.DockerRegistry.Model.OciImages
 {
 	public interface IOciContentDescriptor
 	{

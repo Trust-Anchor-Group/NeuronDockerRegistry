@@ -1,9 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
 
-namespace TAG.Networking.DockerRegistry.Model.Docker
+namespace TAG.Networking.DockerRegistry.Model.DockerImages
 {
-	[Serializable]
 	public class DockerImageManifestV2 : IImageManifest
 	{
 		public const int SchemaVersionValue = 2;
