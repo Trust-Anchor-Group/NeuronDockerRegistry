@@ -25,9 +25,11 @@ namespace TAG.Service.DockerRegistry
                     return;
                 if (args.Object is DockerStorage Storage)
                 {
-                    string[] Tabs = watchers.Values.Where((Watcher) => { return Watcher.StorageGuid == Storage.Guid; }).Select(Watcher => Watcher.TabId).ToArray();
-
-                    await ClientEvents.PushEvent(Tabs, "StorageUpdated", Storage);
+                    string[] TabIds = ClientEvents.GetTabIDsForLocation("/DockerRegistry/Sniffers/StorageSniffer.md", new KeyValuePair<string, string>[]
+                    {
+                        new KeyValuePair<string, string>("Guid", Storage.Guid.ToString())
+                    });
+                    await ClientEvents.PushEvent(TabIds, "StorageUpdated", Storage);
                 }
             };
         }

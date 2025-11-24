@@ -7,6 +7,7 @@ using TAG.Networking.DockerRegistry.Model;
 using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
+using Waher.Service.IoTBroker.StateMachines.Model.Actions.Runtime;
 
 namespace TAG.Networking.DockerRegistry
 {
@@ -17,6 +18,8 @@ namespace TAG.Networking.DockerRegistry
     [Index("IsPrivate")]
     public class DockerRepository
     {
+        private static readonly Regex RootSegmentPattern = new Regex(@"^[A-Za-z0-9._-]+$", RegexOptions.Compiled);
+
         private string objectId;
         private string repositoryName;
         private Guid ownerGuid;
@@ -72,6 +75,9 @@ namespace TAG.Networking.DockerRegistry
 
         public bool HasPermission(DockerActor Actor, RepositoryAction Action)
         {
+            if (Actor == null)
+                return false;
+
             switch (Action)
             {
                 case RepositoryAction.Pull:
@@ -112,6 +118,28 @@ namespace TAG.Networking.DockerRegistry
                 if (!ComponentRegex.IsMatch(component))
                     return false;
             }
+
+            return true;
+        }
+
+        public static bool IsValidRootName(string Name)
+        {
+            if (string.IsNullOrWhiteSpace(Name))
+                return false;
+
+            if (!Name.EndsWith('/'))
+                return false;
+
+            var segment = Name.Substring(0, Name.Length - 1); // drop trailing '/'
+
+            if (segment.Length == 0)
+                return false;
+
+            if (segment.Contains("/"))
+                return false;
+
+            if (!RootSegmentPattern.IsMatch(segment))
+                return false;
 
             return true;
         }

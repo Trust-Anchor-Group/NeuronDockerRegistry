@@ -163,21 +163,7 @@ namespace TAG.Networking.DockerRegistry.Model
 
         private static string ToMetricBytes(double value)
         {
-            string[] units = { "", "K", "M", "G", "T", "P" };
-            int unit = 0;
-
-            while (value >= 1000 && unit < units.Length - 1)
-            {
-                value /= 1000;
-                unit++;
-            }
-
-            // format: no decimals for ints, otherwise max 2 dp
-            string formatted = value % 1 == 0
-                ? value.ToString("0")
-                : value.ToString("0.##");
-
-            return $"{formatted}{units[unit]}b";
+            return "TODO";
         }
     }
 

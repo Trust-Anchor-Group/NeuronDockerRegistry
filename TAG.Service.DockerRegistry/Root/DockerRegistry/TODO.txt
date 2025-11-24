@@ -3,10 +3,9 @@ Organizations:
 * Auto create repo
 
 Users:
-* public interface to create new
+* public interface to create new repo
 
 General:
-* Max dangling blobs
 * delete dangling blobs
 * More image formats?
-* List only public in cataloge 
+* List only public in catalog

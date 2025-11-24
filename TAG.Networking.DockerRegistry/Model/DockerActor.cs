@@ -1,10 +1,13 @@
-﻿using System;
+﻿
+using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Threading.Tasks;
+using Waher.Networking.XMPP.Provisioning.SearchOperators;
 using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
+using Waher.Persistence.FullTextSearch.Tokenizers;
 using Waher.Runtime.Threading;
 
 namespace TAG.Networking.DockerRegistry.Model
@@ -25,11 +28,30 @@ namespace TAG.Networking.DockerRegistry.Model
         /// <summary>
         /// Docker storage guid
         /// </summary>
-        public Guid Storage { get; set; }
+        public Guid StorageGuid { get; set; }
 
-        public async Task<DockerStorage> GetStorage()
+        /// <summary>
+        /// Docker storage guid
+        /// </summary>
+        public ActorOptions Options;
+
+        public DockerActor()
         {
-            return await Database.FindFirstIgnoreRest<DockerStorage>(new FilterAnd(new FilterFieldEqualTo("Guid", Storage)));
+            this.Options = new ActorOptions();
+        }
+
+        public async Task<WritableStorageHandle> GetWritableStorage()
+        {
+            Semaphore Semaphore = await Semaphores.BeginWrite("DockerRegistry_StorageAffecting_" + Guid);
+            DockerStorage Storage = await Database.FindFirstIgnoreRest<DockerStorage>(new FilterAnd(new FilterFieldEqualTo("Guid", StorageGuid)));
+            return new WritableStorageHandle(Storage, Semaphore);
+        }
+
+        public async Task<ReadOnlyStorageHandle> GetReadOnlyStorage()
+        {
+            Semaphore Semaphore = await Semaphores.BeginRead("DockerRegistry_StorageAffecting_" + Guid);
+            DockerStorage Storage = await Database.FindFirstIgnoreRest<DockerStorage>(new FilterAnd(new FilterFieldEqualTo("Guid", StorageGuid)));
+            return new ReadOnlyStorageHandle(Storage, Semaphore);
         }
 
         public async Task<DockerImage[]> FindOwnedImages()
@@ -48,27 +70,53 @@ namespace TAG.Networking.DockerRegistry.Model
 
         public async Task ReSyncStorage()
         {
-            using Semaphore Semaphore = await StorageSemaphore();
-            DockerStorage Storage = await GetStorage();
-            if (Storage is null)
+            await using WritableStorageHandle StorageHandle = await GetWritableStorage();
+            if (StorageHandle is null)
                 return;
 
             DockerImage[] Images = await FindOwnedImages();
 
-            Storage.UsedStorage = 0;
-            Storage.BlobCounter = new DigestReferenceCounter[0];
+            StorageHandle.Storage.UsedStorage = 0;
+            StorageHandle.Storage.BlobCounter = new DigestReferenceCounter[0];
 
             foreach (DockerImage Image in Images)
             {
-                await Storage.RegistrerImage(Image.Manifest);
+                await StorageHandle.Storage.RegistrerImage(Image.Manifest);
             }
-
-            await Database.Update(Storage);
         }
 
-        public async Task<Semaphore> StorageSemaphore()
+        public sealed class WritableStorageHandle : IAsyncDisposable
         {
-            return await Semaphores.BeginWrite("DockerRegistry_StorageAffecting_" + Guid);
+            private Semaphore semaphore;
+            public DockerStorage Storage { get; }
+            public WritableStorageHandle(DockerStorage Storage, Semaphore Semaphore)
+            {
+                this.Storage = Storage;
+                this.semaphore = Semaphore;
+            }
+            public async ValueTask DisposeAsync()
+            {
+                await Database.Update(Storage);
+                semaphore?.Dispose();
+                semaphore = null;
+            }
+        }
+
+        public sealed class ReadOnlyStorageHandle : IDisposable
+        {
+            private Semaphore semaphore;
+            public ReadOnlyDockerStorage Storage { get; }
+
+            public ReadOnlyStorageHandle(DockerStorage Storage, Semaphore Semaphore)
+            {
+                this.Storage = new ReadOnlyDockerStorage(Storage);
+                this.semaphore = Semaphore;
+            }
+            public void Dispose()
+            {
+                semaphore?.Dispose();
+                semaphore = null;
+            }
         }
     }
 }

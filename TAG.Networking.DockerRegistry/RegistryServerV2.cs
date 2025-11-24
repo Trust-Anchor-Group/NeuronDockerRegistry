@@ -182,7 +182,12 @@ namespace TAG.Networking.DockerRegistry
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
-                DockerActor Actor = await GetEffectiveActor(Request, Repository);
+
+                DockerActor Actor;
+                if (Repository == null)
+                    Actor = await GetEffectiveActor(Request, RepositoryName);
+                else
+                    Actor = await GetEffectiveActor(Request, Repository);
 
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
@@ -258,7 +263,11 @@ namespace TAG.Networking.DockerRegistry
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
-                DockerActor Actor = await GetEffectiveActor(Request, Repository);
+                DockerActor Actor;
+                if (Repository == null)
+                    Actor = await GetEffectiveActor(Request, RepositoryName);
+                else
+                    Actor = await GetEffectiveActor(Request, Repository);
 
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
@@ -293,7 +302,11 @@ namespace TAG.Networking.DockerRegistry
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
-                DockerActor Actor = await GetEffectiveActor(Request, Repository);
+                DockerActor Actor;
+                if (Repository == null)
+                    Actor = await GetEffectiveActor(Request, RepositoryName);
+                else
+                    Actor = await GetEffectiveActor(Request, Repository);
 
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
@@ -349,7 +362,11 @@ namespace TAG.Networking.DockerRegistry
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
-                DockerActor Actor = await GetEffectiveActor(Request, Repository);
+                DockerActor Actor;
+                if (Repository == null)
+                    Actor = await GetEffectiveActor(Request, RepositoryName);
+                else
+                    Actor = await GetEffectiveActor(Request, Repository);
 
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
@@ -403,7 +420,11 @@ namespace TAG.Networking.DockerRegistry
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
-                DockerActor Actor = await GetEffectiveActor(Request, Repository);
+                DockerActor Actor;
+                if (Repository == null)
+                    Actor = await GetEffectiveActor(Request, RepositoryName);
+                else
+                    Actor = await GetEffectiveActor(Request, Repository);
 
                 if (Repository == null)
                     throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_UNKNOWN, "Repository name not known to registry."), apiHeader);
@@ -456,11 +477,11 @@ namespace TAG.Networking.DockerRegistry
 
             DockerUser User = await GetDockerUser(Account);
             if (!(User is null))
-                Actors.Add(await User.GetActor());
+                Actors.Add(User);
 
             DockerOrganization Organization = await GetOrganizationActor(Account);
             if (!(Organization is null))
-                Actors.Add(await Organization.GetActor());
+                Actors.Add(Organization);
 
             return Actors.ToArray();
         }
@@ -482,6 +503,39 @@ namespace TAG.Networking.DockerRegistry
                 DockerActor Other = Actors[i];
                 if (Repository.OwnerGuid == Other.Guid)
                     Chosen = Other;
+            }
+
+            return Chosen;
+        }
+
+        /// <summary>
+        /// Gets the effective actor for a repository that does not exist yet
+        /// </summary>
+        /// <param name="Request"></param>
+        /// <param name="RepositoryName"></param>
+        /// <returns></returns>
+        /// <exception cref="ForbiddenException"></exception>
+        private async Task<DockerActor> GetEffectiveActor(HttpRequest Request, CaseInsensitiveString RepositoryName)
+        {
+            List<DockerActor> Actors = (await GetActors(Request)).ToList();
+
+            for(int i = Actors.Count(); i >= 0; i--)
+            {
+                if (!Actors[i].Options.IsOptionTrue(ActorOptions.CanAutoCreateRepository))
+                    Actors.RemoveAt(i);
+            }
+
+            DockerActor Chosen = null;
+        
+            foreach(DockerActor Actor in Actors)
+            {
+                if (!(Actor.Options.TryGetOption(ActorOptions.AutoCreateRepositoryRoot, out object RootNameObj) && RootNameObj is string RootName))
+                    continue;
+
+                if (!RepositoryName.StartsWith(RootName))
+                    continue;
+
+                Chosen = Actor;
             }
 
             return Chosen;

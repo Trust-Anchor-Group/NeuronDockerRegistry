@@ -15,6 +15,7 @@ using Waher.Persistence.Filters;
 using Waher.Runtime.Threading;
 using Waher.Security;
 using Waher.Security.LoginMonitor;
+using static TAG.Networking.DockerRegistry.Model.DockerActor;
 
 
 namespace TAG.Networking.DockerRegistry.Endpoints
@@ -61,8 +62,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
         public async Task DELETE(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
-            using Semaphore Semaphore = await Semaphores.BeginWrite("DockerRegistry_StorageAffecting_" + Actor.Guid);
-            DockerStorage ActorStorage = await Actor.GetStorage();
+            await using WritableStorageHandle Handle = await Actor.GetWritableStorage();
 
             if (!HashDigest.TryParseDigest(Reference, out HashDigest Digest))
                 throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Invalid manifest digest reference."), apiHeader);
@@ -74,8 +74,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             if (Image is null)
                 throw new NotFoundException(new DockerErrors(DockerErrorCode.NAME_INVALID, "Manifest unknown."), apiHeader);
 
-            await ActorStorage.UnregisterImage(Image.Manifest);
-            await Database.Update(ActorStorage);
+            await Handle.Storage.UnregisterImage(Image.Manifest);
 
             await Database.Delete(Image);
 
@@ -89,8 +88,6 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
         public async Task PUT(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
-            using Semaphore Semaphore = await Actor.StorageSemaphore();
-            DockerStorage ActorStorage = await Actor.GetStorage();
 
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
@@ -147,6 +144,8 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                     new FilterFieldEqualTo("Tag", Tag)));
             }
 
+            await using WritableStorageHandle Handle = await Actor.GetWritableStorage();
+
             if (Image is null)
             {
                 Image = new DockerImage()
@@ -161,7 +160,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             }
             else
             { 
-                await ActorStorage.UnregisterImage(Image.Manifest);
+                await Handle.Storage.UnregisterImage(Image.Manifest);
 
                 if (string.IsNullOrEmpty(Tag))
                     Tag = Image.Tag;
@@ -176,13 +175,12 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                 await Database.Update(Image);
             }
 
-            await ActorStorage.RegistrerImage(Image.Manifest);
+            await Handle.Storage.RegistrerImage(Image.Manifest);
 
-            if (ActorStorage.MaxStorage - ActorStorage.UsedStorage < 0)
+            if (Handle.Storage.MaxStorage - Handle.Storage.UsedStorage < 0)
             {
-                await ActorStorage.UnregisterImage(Image.Manifest);
+                await Handle.Storage.UnregisterImage(Image.Manifest);
                 await Database.Delete(Image);
-                await Database.Update(ActorStorage);
                 throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Storage quota exceeded."), apiHeader);
             }
 
@@ -190,8 +188,6 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             {
                 DanglingDockerBlob[] Deleted = (await Database.FindDelete<DanglingDockerBlob>(new FilterAnd(new FilterFieldEqualTo("Digest", Layer.Digest)))).ToArray();
             }
-
-            await Database.Update(ActorStorage);
 
             Log.Informational("Docker image uploaded.", Image.RepositoryName, Request.User.UserName,
                 await LoginAuditor.Annotate(Request.RemoteEndPoint,

@@ -4,6 +4,7 @@ using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
 using Waher.Runtime.Threading;
+using static TAG.Networking.DockerRegistry.Model.DockerActor;
 
 namespace TAG.Networking.DockerRegistry.Model
 {
@@ -50,9 +51,8 @@ namespace TAG.Networking.DockerRegistry.Model
             DockerActor Actor = await Database.FindFirstIgnoreRest<DockerActor>(new FilterAnd(new FilterFieldEqualTo("Guid", Owner)));
             if (Actor != null)
             {
-                using Semaphore Semaphore = await Actor.StorageSemaphore();
-                DockerStorage Storage = await Actor.GetStorage();
-                await Storage.UnregisterDanglingBlob(this);
+                await using WritableStorageHandle Handle = await Actor.GetWritableStorage();
+                await Handle.Storage.UnregisterDanglingBlob(this);
             }
         }
     }

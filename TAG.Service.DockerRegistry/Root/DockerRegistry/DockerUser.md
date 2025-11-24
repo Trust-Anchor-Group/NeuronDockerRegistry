@@ -17,9 +17,8 @@ DockerUser := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser
 if DockerUser = null then
 	NotFound("User with object id " + Guid + " does not exist.");
 
-Actor:=DockerUser.GetActor();
-
-Storage := DockerUser.GetStorage();
+StorageHandle := DockerUser.GetReadOnlyStorage();
+Storage := StorageHandle.Storage;
 
 if exists(Posted) then
 (
@@ -78,7 +77,7 @@ StorageUsed: {{
 PrepareTable(()->
 (
 	Page.Order:="RepositoryName";
-	Actor.FindOwnedImages()
+	DockerUser.FindOwnedImages()
 ));
 
 }}
@@ -128,7 +127,7 @@ PrepareTable(()->
 	</form>
 	<button onclick="OpenPage('DockerStorage.md?Guid={{Storage.Guid}}')">Storage</button>
 	<div>
-		<p><small>Actor GUID: {{Actor.Guid}}</small></p>
+		<p><small>Actor GUID: {{DockerUser.Guid}}</small></p>
 		<p><small>Sstorage GUID: {{Storage.Guid}}</small></p>
 	</div>
 </div>

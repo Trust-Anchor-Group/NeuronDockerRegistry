@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Threading.Tasks;
+using TAG.Networking.DockerRegistry;
 using TAG.Networking.DockerRegistry.Model;
 using Waher.Persistence;
 using Waher.Script;
@@ -70,28 +71,22 @@ namespace TAG.Service.DockerRegistry.Script
 
             long MaxStorage = (long)MaxStorageValue;
 
-            DockerActor Actor = new DockerActor()
-            {
-                Guid = Guid.NewGuid(),
-                Storage = Guid.NewGuid()
-            };
-
             DockerOrganization NewOrganization = new DockerOrganization()
             {
                 OrganizationName = Name,
-                ActorGuid = Actor.Guid,
+                Guid = Guid.NewGuid(),
+                StorageGuid = Guid.NewGuid(),
             };
 
             DockerStorage Storage = new DockerStorage()
             {
                 MaxStorage = MaxStorage,
-                Guid = Actor.Storage,
+                Guid = NewOrganization.StorageGuid,
                 BlobCounter = new DigestReferenceCounter[] { },
                 UsedStorage = 0
             };
 
             await Database.Insert(Storage);
-            await Database.Insert(Actor);
             await Database.Insert(NewOrganization);
 
             return new ObjectValue(NewOrganization);

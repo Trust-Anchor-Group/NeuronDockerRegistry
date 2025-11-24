@@ -123,18 +123,18 @@ namespace TAG.Service.DockerRegistry
 
         public async Task DeleteUser(DockerUser User)
         {
-            await DeleteActorResources(await User.GetActor());
+            await DeleteActorResources(User);
         }
 
         public async Task DeleteOrganization(DockerOrganization Organization)
         {
-            await DeleteActorResources(await Organization.GetActor());
+            await DeleteActorResources(Organization);
         }
 
         public async Task DeleteActorResources(DockerActor Actor)
         {
             await Database.FindDelete<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("OwnerGuid", Actor.Guid)));
-            await Database.Delete((await Actor.GetStorage()));
+            await Database.Delete((await Actor.GetWritableStorage()));
         }
 
         public async Task DeleteRepository(DockerRepository Repository)

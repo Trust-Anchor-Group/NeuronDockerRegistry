@@ -4,6 +4,7 @@ Master: /Master.md
 JavaScript: /Events.js
 JavaScript: Docker.js
 Script: /Controls/SimpleTable.script
+JavaScript: /TargetBlank.js
 UserVariable: User
 Privilege: Admin.Docker
 Login: /Login.md
@@ -16,24 +17,40 @@ DockerOrganization := select top 1 * from TAG.Networking.DockerRegistry.Model.Do
 if DockerOrganization = null then
 	NotFound("Organization with guid " + Guid + " does not exist.");
 
-Actor := DockerOrganization.GetActor();
-Storage := Actor.GetStorage();
+StorageHandle := DockerOrganization.GetReadOnlyStorage();
+Storage := StorageHandle.Storage;
 if exists(Posted) then
 (
+	// delete 
 	if Posted matches { "delete": Bool(PDelete) } and PDelete = true then (
 		DeleteObject(DockerOrganization);
 		TemporaryRedirect("DockerOrganizations.md");
 	);
 
+	// max storage update
 	if Posted matches { "maxStorage": Number(PMaxStorage) } and PMaxStorage > 0 then (
 		Storage.MaxStorage:= PMaxStorage;
 		UpdateObject(Storage);
 	);
 
-		if Posted matches { "organizationName": String(POrganizationName) } then (
+	// organization name update
+	if Posted matches { "organizationName": String(POrganizationName) } then (
 		DockerOrganization.OrganizationName:=POrganizationName;
 		UpdateObject(DockerOrganization);
 	);
+
+	// auto create update
+	if Posted matches { "saveOptions": Bool(PSaveOptions), "autoCreateRepository": Bool(PAutoCreate), "autoCreateRoot": String(PAutoCreateRoot) } and PSaveOptions = true then (
+		LowerCaseName := LowerCase(PAutoCreateRoot);
+
+		if not TAG.Networking.DockerRegistry.DockerRepository.IsValidRootName(LowerCaseName) then
+			BadRequest("invalid auto create repository root name");
+
+		DockerOrganization.Options.SetOption(ActorOptions.CanAutoCreateRepository, PAutoCreate);
+		DockerOrganization.Options.SetOption(ActorOptions.AutoCreateRepositoryRoot, LowerCaseName);
+        
+        UpdateObject(DockerOrganization);
+    );
 );
 "";
 }}
@@ -74,7 +91,7 @@ StorageUsed: {{
 PrepareTable(()->
 (
 	Page.Order:="RepositoryName";
-	Actor.FindOwnedImages();
+	DockerOrganization.FindOwnedImages();
 ));
 
 }}
@@ -94,6 +111,30 @@ PrepareTable(()->
 }}
 
 
+============================================================================
+
+## Options
+
+{{
+	ActorOptions := TAG.Networking.DockerRegistry.ActorOptions;
+	"";
+}}
+
+<form method="POST" class="docker-row">
+    <div>
+        <label for="autoCreateRepository">Auto Create Repositories</label>
+        <select name="autoCreateRepository" id="autoCreateRepository">
+            <option value="true" {{if DockerOrganization.Options.IsOptionTrue(ActorOptions.CanAutoCreateRepository) then "selected" else ""}}>Enabled</option>
+            <option value="false" {{if not DockerOrganization.Options.IsOptionTrue(ActorOptions.CanAutoCreateRepository) then "selected" else ""}}>Disabled</option>
+        </select>
+    </div>
+    <div>
+        <label for="autoCreateRoot">Auto Create Root</label>
+        <input type="text" name="autoCreateRoot" id="autoCreateRoot" value="{{DockerOrganization.Options.TryGetOptionWithDefault(ActorOptions.AutoCreateRepositoryRoot, DockerOrganization.OrganizationName +"/")}}">
+    </div>
+    <input name="saveOptions" value="true" hidden>
+    <button>Save</button>
+</form>
 
 ============================================================================
 
@@ -102,8 +143,9 @@ PrepareTable(()->
 		<input name="delete" value="true" hidden>
 		<button class="negButton">Delete Docker Organization</button>
 	</form>
+	<button onclick="OpenPage('DockerStorage.md?Guid={{Storage.Guid}}')">Storage</button>
 	<div>
-		<p><small>Actor GUID: {{DockerOrganization.ActorGuid}}</small></p>
+		<p><small>Actor GUID: {{DockerOrganization.Guid}}</small></p>
 		<p><small>Sstorage GUID: {{Storage.Guid}}</small></p>
 	</div>
 </div>

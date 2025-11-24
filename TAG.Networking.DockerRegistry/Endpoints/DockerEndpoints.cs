@@ -7,7 +7,6 @@ using TAG.Networking.DockerRegistry.Errors;
 using TAG.Networking.DockerRegistry.Model;
 using Waher.Networking.HTTP;
 using Waher.Networking.Sniffers;
-using Waher.Runtime.Collections;
 
 namespace TAG.Networking.DockerRegistry.Endpoints
 {

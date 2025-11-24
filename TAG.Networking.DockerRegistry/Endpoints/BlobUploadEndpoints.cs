@@ -9,6 +9,7 @@ using Waher.Networking.Sniffers;
 using Waher.Persistence;
 using Waher.Runtime.Cache;
 using Waher.Runtime.Threading;
+using static TAG.Networking.DockerRegistry.Model.DockerActor;
 
 
 namespace TAG.Networking.DockerRegistry.Endpoints
@@ -92,9 +93,9 @@ namespace TAG.Networking.DockerRegistry.Endpoints
         {
             AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
-            DockerStorage Storage = await Actor.GetStorage();
+            using ReadOnlyStorageHandle Handle = await Actor.GetReadOnlyStorage();
 
-            if (Storage.UsedStorage >= Storage.MaxStorage)
+            if (Handle.Storage.UsedStorage >= Handle.Storage.MaxStorage)
                 throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Storage quota exceeded."), apiHeader);
 
             Guid Uuid = Guid.NewGuid();
@@ -165,8 +166,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
                 throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
 
-            using Semaphore Semaphore = await Actor.StorageSemaphore();
-            DockerStorage Storage = await Actor.GetStorage();
+            await using WritableStorageHandle Handle = await Actor.GetWritableStorage();
 
             HashDigest Digest;
 
@@ -203,8 +203,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                     throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "BLOB already exists."), apiHeader);
                 }
 
-                await Storage.RegisterDanglingBlob(Dangling);
-                await Database.Update(Storage);
+                await Handle.Storage.RegisterDanglingBlob(Dangling);
 
                 Response.StatusCode = 201;
                 Response.StatusMessage = "Created";

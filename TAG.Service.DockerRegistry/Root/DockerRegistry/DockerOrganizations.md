@@ -50,16 +50,17 @@ PrepareTable(()->
 ));
 }}
 
-| {{Header("Name","OrganizationName")}} | {{Header("Actor Guid","ActorGuid")}} | {{Header("Storage","Storage")}} |
+| {{Header("Name","OrganizationName")}} | {{Header("Guid","Guid")}} | {{Header("Storage","Storage")}} |
 |:----------:|:-------:|:-------:|
 {{foreach DockerOranization in Page.Table do
 (
-	Storage := DockerOranization.GetStorage();
+	StorageHandle := DockerOranization.GetReadOnlyStorage();
+	Storage := StorageHandle.Storage;
 	Used := ToMetricBytes(Storage.UsedStorage);
 	Max := ToMetricBytes(Storage.MaxStorage);
 
 	]]| [((MarkdownEncode(UN:=DockerOranization.OrganizationName);))](DockerOrganization.md?guid=((DockerOranization.ObjectId))) [[;
-	]]| [((DockerOranization.ActorGuid.ToString();))] [[;
+	]]| [((DockerOranization.ToString();))] [[;
 	]]| [((Used)) of ((Max)) used] [[;
 	]]|
 [[
