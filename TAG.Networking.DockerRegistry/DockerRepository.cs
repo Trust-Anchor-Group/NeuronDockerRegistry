@@ -36,6 +36,11 @@ namespace TAG.Networking.DockerRegistry
         }
 
         /// <summary>
+        /// Guid of the repository
+        /// </summary>
+        public Guid Guid { get; set; }
+
+        /// <summary>
         /// Name of the repository.
         /// </summary>
         public string RepositoryName

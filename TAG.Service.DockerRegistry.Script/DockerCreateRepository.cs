@@ -86,6 +86,7 @@ namespace TAG.Service.DockerRegistry.Script
 
             DockerRepository NewRepo = new DockerRepository()
             {
+                Guid = Guid.NewGuid(),
                 RepositoryName = Name,
                 IsPrivate = IsPrivate,
                 OwnerGuid = OwnerGuid,
