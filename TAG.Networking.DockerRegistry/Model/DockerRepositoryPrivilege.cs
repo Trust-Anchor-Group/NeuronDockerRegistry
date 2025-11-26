@@ -3,7 +3,7 @@ using Waher.Persistence.Attributes;
 
 namespace TAG.Networking.DockerRegistry.Model
 {
-    [CollectionName("DockerWhitelistRecord")]
+    [CollectionName("DockerRepositoryPrivilege")]
     [TypeName(TypeNameSerialization.None)]
     [Index("RepositoryGuid", "ActorGuid")]
     [Index("ActorGuid", "RepositoryGuid")]

@@ -91,13 +91,13 @@ namespace TAG.Service.DockerRegistry
             Database.ObjectDeleted += async (object Sender, ObjectEventArgs args) =>
             {
                 if (args.Object is DockerUser User)
-                    await DeleteUser(User);
+                    await OnUserDeleted(User);
                 else if (args.Object is DockerOrganization Organization)
-                    await DeleteOrganization(Organization);
+                    await OnOrganizationDeleted(Organization);
                 else if (args.Object is DockerRepository Repo)
-                    await DeleteRepository(Repo);
+                    await OnRepositoryDeleted(Repo);
                 else if (args.Object is DanglingDockerBlob Blob)
-                    await Blob.UnregistreFromStorage();
+                    await Blob.OnDanglingBlobDeleted();
             };
 
             return Task.CompletedTask;
@@ -121,25 +121,32 @@ namespace TAG.Service.DockerRegistry
             return await server.CleanUnmanagedRepositories();
         }
 
-        public async Task DeleteUser(DockerUser User)
+        public async Task OnUserDeleted(DockerUser User)
         {
             await DeleteActorResources(User);
         }
 
-        public async Task DeleteOrganization(DockerOrganization Organization)
+        public async Task OnOrganizationDeleted(DockerOrganization Organization)
         {
             await DeleteActorResources(Organization);
         }
 
         public async Task DeleteActorResources(DockerActor Actor)
         {
+            // delete owned repos
             await Database.FindDelete<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("OwnerGuid", Actor.Guid)));
+            // delete storage
             await Database.Delete((await Actor.GetWritableStorage()));
+            // delete all privileges
+            await Database.FindDelete<DockerRepositoryPrivilege>(new FilterAnd(new FilterFieldEqualTo("ActorGuid", Actor.Guid)));
         }
 
-        public async Task DeleteRepository(DockerRepository Repository)
+        public async Task OnRepositoryDeleted(DockerRepository Repository)
         {
+            // delete all images
             await Database.FindDelete<DockerImage>(new FilterAnd(new FilterFieldEqualTo("RepositoryName", Repository.RepositoryName)));
+            // delete all privileges
+            await Database.FindDelete<DockerRepositoryPrivilege>(new FilterAnd(new FilterFieldEqualTo("RepositoryGuid", Repository.Guid)));
         }
 
         /// <summary>

@@ -1,13 +1,11 @@
 ﻿using System;
 using System.Linq;
-using System.Security.Cryptography.X509Certificates;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using TAG.Networking.DockerRegistry.Model;
 using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
-using Waher.Service.IoTBroker.StateMachines.Model.Actions.Runtime;
 
 namespace TAG.Networking.DockerRegistry
 {
@@ -78,10 +76,11 @@ namespace TAG.Networking.DockerRegistry
             this.ownerGuid = Actor.Guid;
         }
 
-        public bool HasPermission(DockerActor Actor, RepositoryAction Action)
+        public async Task<bool> HasPermission(DockerActor Actor, RepositoryAction Action)
         {
             if (Actor == null)
                 return false;
+
 
             switch (Action)
             {
@@ -96,12 +95,37 @@ namespace TAG.Networking.DockerRegistry
                     break;
             }
 
+            DockerRepositoryPrivilege Privileges = await GetPrivileges(Actor);
+
+            switch (Action)
+            {
+                case RepositoryAction.Pull:
+                    if (Privileges.AllowRead)
+                        return true;
+                    break;
+                case RepositoryAction.Delete:
+                case RepositoryAction.Push:
+                    if (Privileges.AllowWrite)
+                        return true;
+                    break;
+            }
+
             return false;
         }
 
         public async Task<DockerActor> GetOwner()
         {
             return await Database.FindFirstDeleteRest<DockerActor>(new FilterAnd(new FilterFieldEqualTo("Guid", OwnerGuid)));
+        }
+
+        public async Task<DockerRepositoryPrivilege> GetPrivileges(DockerActor Actor)
+        {
+            return await Database.FindFirstIgnoreRest<DockerRepositoryPrivilege>(
+                new FilterAnd(
+                    new FilterFieldEqualTo("ActorGuid", Actor.Guid),
+                    new FilterFieldEqualTo("RepositoryGuid", this.Guid)
+                )
+            );
         }
 
         public async Task CreatePrivileges(DockerActor Actor, bool AllowRead, bool AllowWrite)

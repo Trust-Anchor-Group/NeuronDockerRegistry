@@ -46,7 +46,7 @@ namespace TAG.Networking.DockerRegistry.Model
         /// </summary>
         public Guid Owner { get; set; }
 
-        public async Task UnregistreFromStorage()
+        public async Task OnDanglingBlobDeleted()
         {
             DockerActor Actor = await Database.FindFirstIgnoreRest<DockerActor>(new FilterAnd(new FilterFieldEqualTo("Guid", Owner)));
             if (Actor != null)
