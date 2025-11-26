@@ -104,6 +104,33 @@ namespace TAG.Networking.DockerRegistry
             return await Database.FindFirstDeleteRest<DockerActor>(new FilterAnd(new FilterFieldEqualTo("Guid", OwnerGuid)));
         }
 
+        public async Task CreatePrivileges(DockerActor Actor, bool AllowRead, bool AllowWrite)
+        {
+            DockerRepositoryPrivilege Prev = await Database.FindFirstDeleteRest<DockerRepositoryPrivilege>(
+                new FilterAnd(
+                    new FilterFieldEqualTo("ActorGuid", Actor.Guid),
+                    new FilterFieldEqualTo("RepositoryGuid", this.Guid)
+                ));
+
+            if (!(Prev is null))
+            {
+                Prev.AllowRead = AllowRead;
+                Prev.AllowWrite = AllowWrite;
+                await Database.Update(Prev);
+                return;
+            }
+
+            DockerRepositoryPrivilege NewPrivilege = new DockerRepositoryPrivilege()
+            {
+                ActorGuid = Actor.Guid,
+                RepositoryGuid = this.Guid,
+                AllowWrite = AllowWrite,
+                AllowRead = AllowRead,
+            };
+
+            await Database.Insert(NewPrivilege);
+        }
+
         public static bool ValidateRepositoryName(string name)
         {
             Regex ComponentRegex = new Regex("^[a-z0-9]+(?:[._-][a-z0-9]+)*$", RegexOptions.Compiled);
