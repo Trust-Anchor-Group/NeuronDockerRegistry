@@ -7,16 +7,12 @@ using TAG.Networking.DockerRegistry.Model.DockerImages;
 using TAG.Networking.DockerRegistry.Model.OciImages;
 using Waher.Content;
 using Waher.Events;
-using Waher.Networking.CoAP.Options;
 using Waher.Networking.HTTP;
 using Waher.Networking.Sniffers;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
-using Waher.Runtime.Threading;
 using Waher.Security;
 using Waher.Security.LoginMonitor;
-using static TAG.Networking.DockerRegistry.Model.DockerActor;
-
 
 namespace TAG.Networking.DockerRegistry.Endpoints
 {

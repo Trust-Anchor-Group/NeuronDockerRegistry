@@ -50,7 +50,7 @@ namespace TAG.Networking.DockerRegistry.Model
             DockerActor Actor = await Database.FindFirstIgnoreRest<DockerActor>(new FilterAnd(new FilterFieldEqualTo("Guid", Owner)));
             if (Actor != null)
             {
-                await using DockerActor.WritableStorageHandle Handle = await Actor.GetWritableStorage();
+                await using WritableStorageHandle Handle = await Actor.GetWritableStorage();
                 await Handle.Storage.UnregisterDanglingBlob(this);
             }
         }
