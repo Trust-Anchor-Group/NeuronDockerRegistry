@@ -55,6 +55,9 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
 		public async Task DELETE(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
 		{
+
+			throw new NotImplementedException("TODO ask peter what todo");
+
             await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
 
             if (!HashDigest.TryParseDigest(Reference, out HashDigest Digest))
@@ -66,7 +69,11 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 			if (blob is null)
 				throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."), apiHeader);
 
-			await Database.Delete(blob);
+            DockerActor Owner = await Repository.GetOwner();
+            await using WritableStorageHandle Handle = await Owner.GetWritableStorage();
+
+
+            await Database.Delete(blob);
 
 			Response.StatusCode = 202;
 			Response.StatusMessage = "Accepted";

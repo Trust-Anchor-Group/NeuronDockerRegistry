@@ -13,6 +13,7 @@ using Waher.Persistence;
 using Waher.Persistence.Filters;
 using Waher.Security;
 using Waher.Security.LoginMonitor;
+using Waher.Service.IoTBroker.MultiUserChat.Affiliations;
 
 namespace TAG.Networking.DockerRegistry.Endpoints
 {
@@ -58,7 +59,8 @@ namespace TAG.Networking.DockerRegistry.Endpoints
         public async Task DELETE(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
             await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
-            await using WritableStorageHandle Handle = await Actor.GetWritableStorage();
+            DockerActor Owner = await Repository.GetOwner();
+            await using WritableStorageHandle Handle = await Owner.GetWritableStorage();
 
             if (!HashDigest.TryParseDigest(Reference, out HashDigest Digest))
                 throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Invalid manifest digest reference."), apiHeader);
@@ -140,7 +142,8 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                     new FilterFieldEqualTo("Tag", Tag)));
             }
 
-            await using WritableStorageHandle Handle = await Actor.GetWritableStorage();
+            DockerActor Owner = await Repository.GetOwner();
+            await using WritableStorageHandle Handle = await Owner.GetWritableStorage();
 
             if (Image is null)
             {
@@ -155,7 +158,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                 await Database.Insert(Image);
             }
             else
-            { 
+            {
                 await Handle.Storage.UnregisterImage(Image.Manifest);
 
                 if (string.IsNullOrEmpty(Tag))

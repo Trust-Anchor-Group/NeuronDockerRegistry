@@ -166,7 +166,8 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
                 throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
 
-            await using WritableStorageHandle Handle = await Actor.GetWritableStorage();
+            DockerActor Owner = await Repository.GetOwner();
+            await using WritableStorageHandle Handle = await Owner.GetWritableStorage();
 
             HashDigest Digest;
 
