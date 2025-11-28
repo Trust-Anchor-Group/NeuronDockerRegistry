@@ -2,13 +2,10 @@
 using System.IO;
 using System.Linq;
 using System.Text;
-using Waher.Content.Json;
-using Waher.Runtime.Inventory;
 using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry.Model
 {
-	[Serializable]
 	public class HashDigest : IComparable
 	{
 		public HashFunction HashFunction;

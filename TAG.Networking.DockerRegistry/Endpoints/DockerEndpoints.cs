@@ -22,9 +22,9 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             this.sniffers = Sniffers;
         }
 
-        protected void AssertRepositoryPrivilages(DockerActor Actor, DockerRepository Repository, DockerRepository.RepositoryAction Action, HttpRequest Request)
+        protected async Task AssertRepositoryPrivilages(DockerActor Actor, DockerRepository Repository, DockerRepository.RepositoryAction Action, HttpRequest Request)
         {
-            bool HasPermission = Repository.HasPermission(Actor, Action);
+            bool HasPermission = await Repository.HasPermission(Actor, Action);
             if (!HasPermission)
                 throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
             Sniff(Request, Actor);

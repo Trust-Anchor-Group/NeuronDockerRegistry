@@ -35,7 +35,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
         public async Task GET(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
-            AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Pull, Request);
+            await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Pull, Request);
 
             DockerImage Image;
 
@@ -61,7 +61,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
         }
         public async Task DELETE(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
-            AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
+            await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
             await using WritableStorageHandle Handle = await Actor.GetWritableStorage();
 
             if (!HashDigest.TryParseDigest(Reference, out HashDigest Digest))
@@ -89,7 +89,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
         public async Task PUT(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
 
-            AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
+            await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
             ContentResponse ManifestContentResponse = await Request.DecodeDataAsync();
             string Tag = null;

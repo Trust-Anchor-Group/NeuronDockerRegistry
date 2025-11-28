@@ -1,7 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
-using TAG.Networking.DockerRegistry;
 using TAG.Networking.DockerRegistry.Model;
 using Waher.Content.Markdown.Model.SpanElements;
 using Waher.Persistence;

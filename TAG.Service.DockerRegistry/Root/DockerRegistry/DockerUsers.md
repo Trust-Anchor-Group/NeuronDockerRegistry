@@ -61,7 +61,7 @@ PrepareTable(()->
 	Used := ToMetricBytes(Storage.UsedStorage);
 	Max := ToMetricBytes(Storage.MaxStorage);
 
-	]]| [((MarkdownEncode(UN:=DockerUser.AccountName);))](DockerUser.md?guid=((DockerUser.ObjectId))) [[;
+	]]| [((MarkdownEncode(UN:=DockerUser.AccountName);))](DockerUser.md?Guid=((DockerUser.Guid))) [[;
 	]]| [((DockerUser.Guid.ToString();))] [[;
 	]]| [((Used)) of ((Max)) used] [[;
 	]]|

@@ -11,6 +11,7 @@ using Waher.Runtime.Threading;
 namespace TAG.Networking.DockerRegistry.Model
 {
     [CollectionName("DockerStorage")]
+    [TypeName(TypeNameSerialization.FullName)]
     [Index("Guid")]
     public class DockerStorage : IJsonEncodingHint
     {

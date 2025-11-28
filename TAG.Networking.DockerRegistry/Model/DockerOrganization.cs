@@ -4,9 +4,7 @@ using Waher.Persistence;
 using Waher.Persistence.Attributes;
 namespace TAG.Networking.DockerRegistry.Model
 {
-    [CollectionName("DockerOrganization")]
     [TypeName(TypeNameSerialization.FullName)]
-    [Index("Guid")]
     [Index("OrganizationName")]
     public class DockerOrganization : DockerActor
     {

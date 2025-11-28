@@ -54,17 +54,26 @@ Docker Repositories
 PrepareTable(()->
 (
 	Page.Order:="RepositoryName";
-	select * from TAG.Networking.DockerRegistry.DockerRepository order by RepositoryName
+	select * from TAG.Networking.DockerRegistry.Model.DockerRepository order by RepositoryName
 ));
 }}
 
-| {{Header("Name","DockerRepositoryName")}} | {{Header("Owner Guid","OwnerGuid")}} |
-|:----------|:-------:|
+| {{Header("Name","RepositoryName")}} | {{Header("Owner Guid","OwnerGuid")}} | Owner |
+|:----------|:-------:|-----------|
 {{foreach Repository in Page.Table do
 (
-	]]| [((MarkdownEncode(UN:=Repository.RepositoryName);))] [[;
+	Owner := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerActor where Guid=Repository.OwnerGuid;
+
+	]]| [((MarkdownEncode(UN:=Repository.RepositoryName);))](DockerRepository.md?objectId=((Repository.ObjectId.ToString();))) [[;
 	]]| [((MarkdownEncode(EM:=Repository.OwnerGuid);))] [[;
+	if Owner is TAG.Networking.DockerRegistry.Model.DockerUser then(
+	]]| [((Owner.AccountName))](DockerUser.md?guid=((Owner.Guid))) [[;
+	)
+	else(
+	]]| [((Owner.OrganizationName))](DockerOrganization.md?guid=((Owner.Guid))) [[;
+	);
     ]]|
 [[
 )
 }}
+

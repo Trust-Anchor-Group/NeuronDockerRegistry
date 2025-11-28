@@ -12,10 +12,10 @@ CSS: Style.cssx
 Parameter: Guid
 
 {{
-DockerUser := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser where ObjectId=Guid;
+DockerUser := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser where Guid=Guid;
 
 if DockerUser = null then
-	NotFound("User with object id " + Guid + " does not exist.");
+	NotFound("User with Guid " + Guid + " does not exist.");
 
 StorageHandle := DockerUser.GetReadOnlyStorage();
 Storage := StorageHandle.Storage;
@@ -36,6 +36,12 @@ if exists(Posted) then
 		DockerUser.AccountName:=PBrokerAccount;
 		UpdateObject(DockerUser);
 	);
+
+	if Posted matches { "createRepository": Bool(PCreate), "repositoryName": PRepositoryName, "visibility": PVisibility} then
+	(
+		DockerCreateRepository(PRepositoryName, DockerUser.Guid.ToString(), PVisibility = "private");
+		]]+> created repository at ((PRepositoryName)) [[
+	)
 );
 "";
 }}
@@ -71,36 +77,33 @@ StorageUsed: {{
 }}
 </h2>
 
+
+
+## Owned repositories
+
 <div class="docker-double">
+<form action="" method="POST">
+	<input name="createRepository" value=true hidden>
+	<p>
+		<label for="repositoryName">Repository Name</label>  
+		<input type="text" id="RepositoryName" name="repositoryName" autofocus required/>
+	</p>
+	<p>
+		<label for="visibility">Visibility</label>  
+		<select name="visibility" id="visibility" required>
+		<option value="public" selected>Public</option>
+		<option value="private">Private</option>
+		</select>
+	</p>
 
-{{
-PrepareTable(()->
-(
-	Page.Order:="RepositoryName";
-	DockerUser.FindOwnedImages()
-));
-
-}}
-
-| {{Header("Repository","RepositoryName")}}  | {{Header("Tag", "Tag")}} | {{Header("Size", "Size")}} | {{Header("Digest", "Digest")}} | 
-|:----------|:--------|:----------|:----------|
-{{foreach Image in Page.Table do
-(
-	Size:=ToMetricBytes(Image.GetSize());
-	]]| ((Image.RepositoryName)) [[;
-	]]| ((Image.Tag)) [[;
-	]]| ((Size)) [[;
-	]]| ((Image.Digest)) [[;
-	]]|
-[[
-)
-}}
+	<button>Create repository</button>
+</form>
 
 {{
 PrepareTable(()->
 (
 	Page.Order:="Repositories";
-	select * from DockerRepository where OwnerGuid = Guid
+	select * from DockerRepository where OwnerGuid = DockerUser.Guid
 ));
 
 }}
@@ -109,7 +112,7 @@ PrepareTable(()->
 |:----------|
 {{foreach Repository in Page.Table do
 (
-	]]| ((Repository.RepositoryName)) [[;
+	]]| [((Repository.RepositoryName))](DockerRepository.md?objectId=((Repository.ObjectId.ToString();))) [[;
 	]]|
 [[
 )

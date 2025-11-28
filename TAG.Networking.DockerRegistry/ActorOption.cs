@@ -3,7 +3,6 @@ using Waher.Persistence;
 
 namespace TAG.Networking.DockerRegistry
 {
-    [Serializable]
     public class ActorOption
     {
         public CaseInsensitiveString Name;

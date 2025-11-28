@@ -4,9 +4,7 @@ using Waher.Persistence.Attributes;
 
 namespace TAG.Networking.DockerRegistry.Model
 {
-    [CollectionName("DockerUser")]
     [TypeName(TypeNameSerialization.FullName)]
-    [Index("Guid")]
     [Index("UserName")]
     public class DockerUser : DockerActor
     {

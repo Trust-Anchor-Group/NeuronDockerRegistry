@@ -44,7 +44,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
         public async Task GET(HttpRequest Request, HttpResponse Response, ByteRangeInterval Interval, DockerActor Actor, DockerRepository Repository, string Reference)
         {
-            AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
+            await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
             Guid Uuid = Guid.Parse(Reference);
 
@@ -91,7 +91,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
         public async Task POST(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
-            AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
+            await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
             using ReadOnlyStorageHandle Handle = await Actor.GetReadOnlyStorage();
 
@@ -112,7 +112,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
         public async Task DELETE(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
-            AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
+            await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
 
             if (string.IsNullOrEmpty(Reference) || !Guid.TryParse(Reference, out Guid Uuid))
                 throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
@@ -129,7 +129,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
         public async Task PATCH(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval, DockerActor Actor, DockerRepository Repository, string Reference)
         {
-            AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
+            await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
             if (!Guid.TryParse(Reference, out Guid Uuid) || !Request.HasData)
                 throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);
@@ -158,7 +158,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
         public async Task PUT(HttpRequest Request, HttpResponse Response, ContentByteRangeInterval Interval, DockerActor Actor, DockerRepository Repository, string Reference)
         {
-            AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
+            await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
             if (string.IsNullOrEmpty(Reference) || !Guid.TryParse(Reference, out Guid Uuid))
                 throw new BadRequestException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_INVALID, "BLOB upload invalid."), apiHeader);

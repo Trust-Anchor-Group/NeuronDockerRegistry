@@ -1,13 +1,11 @@
 ﻿using System;
-using System.Linq;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
-using TAG.Networking.DockerRegistry.Model;
 using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
 
-namespace TAG.Networking.DockerRegistry
+namespace TAG.Networking.DockerRegistry.Model
 {
     [CollectionName("DockerRepository")]
     [TypeName(TypeNameSerialization.None)]

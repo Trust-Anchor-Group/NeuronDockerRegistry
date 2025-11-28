@@ -4,16 +4,22 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<None Remove="Root\DockerRegistry\Sniffers\Sniffer.md" />
+		<None Remove="Root\DockerRegistry\Sniffers\StorageSniffer.js" />
+		<None Remove="Root\DockerRegistry\Sniffers\StorageSniffer.md" />
 		<None Remove="TAG.Service.DockerRegistry.manifest" />
 	</ItemGroup>
 
 	<ItemGroup>
-	  <Content Include="Root\DockerRegistry\Sniffer.md">
-	    <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
-	  </Content>
-	</ItemGroup>
-
-	<ItemGroup>
+		<Content Include="Root\DockerRegistry\Sniffers\Sniffer.md">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Root\DockerRegistry\Sniffers\StorageSniffer.js">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Root\DockerRegistry\Sniffers\StorageSniffer.md">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
 		<Content Include="TAG.Service.DockerRegistry.manifest">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>

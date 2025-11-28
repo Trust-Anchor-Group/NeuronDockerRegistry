@@ -7,7 +7,6 @@ using TAG.Networking.DockerRegistry.Model;
 using Waher.Events;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
-using Waher.Runtime.Threading;
 using Waher.Security;
 
 namespace TAG.Networking.DockerRegistry

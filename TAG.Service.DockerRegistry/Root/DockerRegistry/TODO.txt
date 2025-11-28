@@ -9,3 +9,12 @@ General:
 * delete dangling blobs
 * More image formats?
 * List only public in catalog
+
+
+
+vad som krävs:
+* vi ska kunna manager för våra klienter att kunna navände neuronen för deras images. För detta krävs
+	- manega organisationer så de kan publisha och sådant
+	- ifall dom äger neuron ska dom lätt kunan skapa repos
+		- eller sätta på auto skapa
+	- kunna göra så att den senaste pushad blir latestw

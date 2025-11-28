@@ -3,12 +3,11 @@ using System.Threading.Tasks;
 using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
-using Waher.Runtime.Threading;
-using static TAG.Networking.DockerRegistry.Model.DockerActor;
 
 namespace TAG.Networking.DockerRegistry.Model
 {
     [CollectionName("DanglingDockerBlob")]
+    [TypeName(TypeNameSerialization.None)]
     [Index("Owner")]
     public class DanglingDockerBlob
     {
@@ -51,7 +50,7 @@ namespace TAG.Networking.DockerRegistry.Model
             DockerActor Actor = await Database.FindFirstIgnoreRest<DockerActor>(new FilterAnd(new FilterFieldEqualTo("Guid", Owner)));
             if (Actor != null)
             {
-                await using WritableStorageHandle Handle = await Actor.GetWritableStorage();
+                await using DockerActor.WritableStorageHandle Handle = await Actor.GetWritableStorage();
                 await Handle.Storage.UnregisterDanglingBlob(this);
             }
         }

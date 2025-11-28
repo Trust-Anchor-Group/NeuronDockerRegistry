@@ -2,17 +2,18 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
-using Waher.Networking.XMPP.Provisioning.SearchOperators;
 using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
-using Waher.Persistence.FullTextSearch.Tokenizers;
 using Waher.Runtime.Threading;
 
 namespace TAG.Networking.DockerRegistry.Model
 {
-    public class DockerActor
+    [CollectionName("DockerActor")]
+    [TypeName(TypeNameSerialization.FullName)]
+    public abstract class DockerActor
     {
         /// <summary>
         /// Object ID
@@ -42,14 +43,14 @@ namespace TAG.Networking.DockerRegistry.Model
 
         public async Task<WritableStorageHandle> GetWritableStorage()
         {
-            Semaphore Semaphore = await Semaphores.BeginWrite("DockerRegistry_StorageAffecting_" + Guid);
+            Waher.Runtime.Threading.Semaphore Semaphore = await Semaphores.BeginWrite("DockerRegistry_StorageAffecting_" + Guid);
             DockerStorage Storage = await Database.FindFirstIgnoreRest<DockerStorage>(new FilterAnd(new FilterFieldEqualTo("Guid", StorageGuid)));
             return new WritableStorageHandle(Storage, Semaphore);
         }
 
         public async Task<ReadOnlyStorageHandle> GetReadOnlyStorage()
         {
-            Semaphore Semaphore = await Semaphores.BeginRead("DockerRegistry_StorageAffecting_" + Guid);
+            Waher.Runtime.Threading.Semaphore Semaphore = await Semaphores.BeginRead("DockerRegistry_StorageAffecting_" + Guid);
             DockerStorage Storage = await Database.FindFirstIgnoreRest<DockerStorage>(new FilterAnd(new FilterFieldEqualTo("Guid", StorageGuid)));
             return new ReadOnlyStorageHandle(Storage, Semaphore);
         }
@@ -85,11 +86,11 @@ namespace TAG.Networking.DockerRegistry.Model
             }
         }
 
-        public sealed class WritableStorageHandle : IAsyncDisposable
+        public class WritableStorageHandle : IAsyncDisposable
         {
-            private Semaphore semaphore;
+            private Waher.Runtime.Threading.Semaphore semaphore;
             public DockerStorage Storage { get; }
-            public WritableStorageHandle(DockerStorage Storage, Semaphore Semaphore)
+            public WritableStorageHandle(DockerStorage Storage, Waher.Runtime.Threading.Semaphore Semaphore)
             {
                 this.Storage = Storage;
                 this.semaphore = Semaphore;
@@ -102,20 +103,41 @@ namespace TAG.Networking.DockerRegistry.Model
             }
         }
 
-        public sealed class ReadOnlyStorageHandle : IDisposable
+        public class ReadOnlyStorageHandle : IDisposable
         {
-            private Semaphore semaphore;
+            // Semaphore coming from Waher.Runtime.Threading.Semaphore
+            private Waher.Runtime.Threading.Semaphore semaphore;
             public ReadOnlyDockerStorage Storage { get; }
 
-            public ReadOnlyStorageHandle(DockerStorage Storage, Semaphore Semaphore)
+            public ReadOnlyStorageHandle(DockerStorage Storage, Waher.Runtime.Threading.Semaphore Semaphore)
             {
                 this.Storage = new ReadOnlyDockerStorage(Storage);
                 this.semaphore = Semaphore;
             }
+
+            // Standard dispose pattern with finalizer to avoid leaving semaphore held.
             public void Dispose()
             {
-                semaphore?.Dispose();
-                semaphore = null;
+                Dispose(true);
+                GC.SuppressFinalize(this);
+            }
+
+            private void Dispose(bool disposing)
+            {
+                try
+                {
+                    Waher.Runtime.Threading.Semaphore s = Interlocked.Exchange(ref semaphore, null);
+                    s?.Dispose();
+                }
+                catch
+                {
+                    // Swallow: best effort to release semaphore.
+                }
+            }
+
+            ~ReadOnlyStorageHandle()
+            {
+                Dispose(false);
             }
         }
     }

@@ -22,7 +22,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
 		public async Task GET(HttpRequest Request, HttpResponse Response, ByteRangeInterval Interval, DockerActor Actor, DockerRepository Repository, string Reference)
 		{
-            AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Pull, Request);
+            await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Pull, Request);
 
             if (!HashDigest.TryParseDigest(Reference, out HashDigest Digest))
 				throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Provided digest did not match uploaded content."), apiHeader);
@@ -55,7 +55,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
 		public async Task DELETE(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
 		{
-            AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
+            await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
 
             if (!HashDigest.TryParseDigest(Reference, out HashDigest Digest))
 				throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Invalid BLOB digest reference."), apiHeader);

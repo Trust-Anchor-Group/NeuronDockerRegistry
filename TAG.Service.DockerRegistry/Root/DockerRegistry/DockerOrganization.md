@@ -12,10 +12,10 @@ CSS: Style.cssx
 Parameter: Guid
 
 {{
-DockerOrganization := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerOrganization where ObjectId=Guid;
+DockerOrganization := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerOrganization where Guid=Guid;
 
 if DockerOrganization = null then
-	NotFound("Organization with guid " + Guid + " does not exist.");
+	NotFound("Organization with Guid " + Guid + " does not exist.");
 
 StorageHandle := DockerOrganization.GetReadOnlyStorage();
 Storage := StorageHandle.Storage;
@@ -51,6 +51,13 @@ if exists(Posted) then
         
         UpdateObject(DockerOrganization);
     );
+
+	// create repository
+	if Posted matches { "createRepository": Bool(PCreate), "repositoryName": PRepositoryName, "visibility": PVisibility} then
+	(
+		DockerCreateRepository(PRepositoryName, DockerOrganization.Guid.ToString(), PVisibility = "private");
+		]]+> created repository at ((PRepositoryName)) [[
+	)
 );
 "";
 }}
@@ -109,6 +116,48 @@ PrepareTable(()->
 [[
 )
 }}
+
+## Owned repositories
+
+<div class="docker-double">
+<form action="" method="POST">
+	<input name="createRepository" value=true hidden>
+	<p>
+		<label for="repositoryName">Repository Name</label>  
+		<input type="text" id="RepositoryName" name="repositoryName" autofocus required/>
+	</p>
+	<p>
+		<label for="visibility">Visibility</label>  
+		<select name="visibility" id="visibility" required>
+		<option value="public" selected>Public</option>
+		<option value="private">Private</option>
+		</select>
+	</p>
+
+	<button>Create repository</button>
+</form>
+
+{{
+PrepareTable(()->
+(
+	Page.Order:="Repositories";
+	select * from DockerRepository where OwnerGuid = DockerOrganization.Guid
+));
+
+}}
+
+| {{Header("Repository","RepositoryName")}} | 
+|:----------|
+{{foreach Repository in Page.Table do
+(
+	]]| [((Repository.RepositoryName))](DockerRepository.md?objectId=((Repository.ObjectId.ToString();))) [[;
+	]]|
+[[
+)
+}}
+
+</div>
+
 
 
 ============================================================================
