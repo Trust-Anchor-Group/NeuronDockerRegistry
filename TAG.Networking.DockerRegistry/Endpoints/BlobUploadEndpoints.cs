@@ -190,7 +190,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                 {
                     Created = DateTime.Now,
                     Digest = Digest,
-                    Owner = Actor.Guid,
+                    Owner = Owner.Guid,
                     Size = UploadRecord.File.Length
                 };
 

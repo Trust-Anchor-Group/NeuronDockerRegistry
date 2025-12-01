@@ -18,14 +18,36 @@ if Repo = null then
 
 if exists(Posted) then
 (
-    if Posted matches { "delete": Bool(PDelete) } and PDelete = true then
+    // delete repository
+    if Posted matches { "delete": Bool(PDelete) } and PDelete then
     (
         DeleteObject(Repo);
 		TemporaryRedirect("Repositories.md");
     );
-);
 
-"";
+    // add whitelist
+    if Posted matches { "addToWhitelist": Bool(PAddToWhitelist), "accountName": PAccountName } and PAddToWhitelist then (
+        DockerUser := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser where AccountName=PAccountName;
+        if DockerUser = null then (
+            ]] > No user with account name ((PAccountName)) exists [[;
+        ) else (
+            Repo.CreatePrivileges(DockerUser, true, true);
+            ]] +> Whitelisted user ((PAccountName)) [[;
+        )
+    );
+
+    // remove whitelist
+    if Posted matches { "removeFromWhitelist": Bool(PRemoveFromWhitelist), "accountGuid": PAccountGuid } and PRemoveFromWhitelist then (
+        DockerUser := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser where Guid=PAccountGuid;
+        Pri := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerRepositoryPrivilege where ActorGuid=PAccountGuid;
+        if DockerUser = null or Pri = null then (
+            ]] > No user with guid ((PAccountGuid)) is whitelisted [[;
+        ) else (
+            DeleteObject(Pri);
+            ]] +> Removed user ((DockerUser.AccountName)) whitelist privileges [[;
+        )
+    );
+);
 }}
 
 ================================================================================================================================
@@ -49,6 +71,38 @@ if exists(Posted) then
     );
 }}
 
+============================================================================
+
+## User Whitelist
+
+{{
+	Privileges := select * from DockerRepositoryPrivilege where RepositoryGuid=Repo.Guid;
+
+    foreach Pri in Privileges do (
+        Account := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser where Guid=Pri.ActorGuid;
+        if not (Account = null) then (
+            ]]
+            <form method="POST" class="docker-row">
+                <div>
+                    <label for="accountGuid">Account name: ((Account.AccountName))</label>
+                    <input type="text" name="accountGuid" id="accountGuid" value="((Account.Guid))") hidden>
+                </div>
+                <input name="removeFromWhitelist" value="true" hidden>
+                <button class="negButton">Remove whitelist</button>
+            </form>
+            [[;
+        )
+    );
+}}
+
+<form method="POST" class="docker-row">
+    <div>
+        <label for="accountName">Account name</label>
+        <input type="text" name="accountName" id="accountName" value="" required>
+    </div>
+    <input name="addToWhitelist" value="true" hidden>
+    <button>Add to whitelist</button>
+</form>
 
 ==================================================
 
@@ -82,7 +136,6 @@ foreach Image in Page.Table do
 		<input name="delete" value="true" hidden>
 		<button class="negButton">Delete Repository</button>
 	</form>
-	<button onclick="OpenPage('DockerStorage.md?Guid={{Storage.Guid}}')">Storage</button>
 	<div>
 		<p><small>Repository GUID: {{Repo.Guid}}</small></p>
 	</div>
