@@ -24,15 +24,8 @@ namespace TAG.Networking.DockerRegistry.Model
 
         private void Dispose(bool disposing)
         {
-            try
-            {
-                Waher.Runtime.Threading.Semaphore s = Interlocked.Exchange(ref semaphore, null);
-                s?.Dispose();
-            }
-            catch
-            {
-                // Swallow: best effort to release semaphore.
-            }
+            Waher.Runtime.Threading.Semaphore s = Interlocked.Exchange(ref semaphore, null);
+            s?.Dispose();
         }
 
         ~ReadOnlyStorageHandle()

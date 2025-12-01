@@ -17,8 +17,7 @@ DockerOrganization := select top 1 * from TAG.Networking.DockerRegistry.Model.Do
 if DockerOrganization = null then
 	NotFound("Organization with Guid " + Guid + " does not exist.");
 
-StorageHandle := DockerOrganization.GetReadOnlyStorage();
-Storage := StorageHandle.Storage;
+Storage := DockerOrganization.GetStorageNonBlocking();
 if exists(Posted) then
 (
 	// delete 

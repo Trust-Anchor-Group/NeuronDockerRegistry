@@ -95,6 +95,9 @@ namespace TAG.Networking.DockerRegistry.Model
 
             DockerRepositoryPrivilege Privileges = await GetPrivileges(Actor);
 
+            if (Privileges is null)
+                return false;
+
             switch (Action)
             {
                 case RepositoryAction.Pull:

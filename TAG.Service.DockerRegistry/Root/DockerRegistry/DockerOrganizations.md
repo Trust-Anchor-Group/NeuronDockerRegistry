@@ -52,15 +52,14 @@ PrepareTable(()->
 
 | {{Header("Name","OrganizationName")}} | {{Header("Guid","Guid")}} | {{Header("Storage","Storage")}} |
 |:----------:|:-------:|:-------:|
-{{foreach DockerOranization in Page.Table do
+{{foreach Org in Page.Table do
 (
-	StorageHandle := DockerOranization.GetReadOnlyStorage();
-	Storage := StorageHandle.Storage;
+	Storage := Org.GetStorageNonBlocking();
 	Used := ToMetricBytes(Storage.UsedStorage);
 	Max := ToMetricBytes(Storage.MaxStorage);
 
-	]]| [((MarkdownEncode(UN:=DockerOranization.OrganizationName);))](DockerOrganization.md?guid=((DockerOranization.Guid))) [[;
-	]]| [((DockerOranization.ToString();))] [[;
+	]]| [((MarkdownEncode(UN:=Org.OrganizationName);))](DockerOrganization.md?guid=((Org.Guid))) [[;
+	]]| [((Org.ToString();))] [[;
 	]]| [((Used)) of ((Max)) used] [[;
 	]]|
 [[

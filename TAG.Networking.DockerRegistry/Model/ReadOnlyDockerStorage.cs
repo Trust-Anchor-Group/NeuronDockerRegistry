@@ -5,7 +5,6 @@ namespace TAG.Networking.DockerRegistry.Model
     public class ReadOnlyDockerStorage
     {
         private DockerStorage storage;
-
         public string ObjectId => storage.ObjectId;
         public Guid Guid => storage.Guid;
         public DigestReferenceCounter[] BlobCounter => storage.BlobCounter;

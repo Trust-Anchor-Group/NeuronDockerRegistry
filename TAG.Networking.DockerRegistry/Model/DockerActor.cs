@@ -55,6 +55,12 @@ namespace TAG.Networking.DockerRegistry.Model
             return new ReadOnlyStorageHandle(Storage, Semaphore);
         }
 
+        public async Task<DockerStorage> GetStorageNonBlocking()
+        {
+            DockerStorage Storage = await Database.FindFirstIgnoreRest<DockerStorage>(new FilterAnd(new FilterFieldEqualTo("Guid", StorageGuid)));
+            return Storage;
+        }
+
         public async Task<DockerImage[]> FindOwnedImages()
         {
             DockerRepository[] Repositories = (await Database.Find<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("OwnerGuid", Guid)))).ToArray();

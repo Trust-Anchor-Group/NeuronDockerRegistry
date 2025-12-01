@@ -12,13 +12,13 @@ CSS: Style.cssx
 Parameter: Guid
 
 {{
-DockerUser := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser where Guid=Guid;
+DockerUser := select top 1 * from DockerRegistry.Model.DockerUser where Guid=Guid;
 
 if DockerUser = null then
 	NotFound("User with Guid " + Guid + " does not exist.");
 
-StorageHandle := DockerUser.GetReadOnlyStorage();
-Storage := StorageHandle.Storage;
+Storage := DockerUser.GetStorageNonBlocking();
+
 
 if exists(Posted) then
 (
@@ -64,8 +64,6 @@ if exists(Posted) then
 		<button>Update</button>
 	</form>
 <div>
-
-
 
 ============================================================================
 

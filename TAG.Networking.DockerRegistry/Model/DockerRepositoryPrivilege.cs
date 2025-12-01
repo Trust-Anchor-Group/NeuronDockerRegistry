@@ -7,6 +7,7 @@ namespace TAG.Networking.DockerRegistry.Model
     [TypeName(TypeNameSerialization.None)]
     [Index("RepositoryGuid", "ActorGuid")]
     [Index("ActorGuid", "RepositoryGuid")]
+
     public class DockerRepositoryPrivilege
     {
         /// <summary>

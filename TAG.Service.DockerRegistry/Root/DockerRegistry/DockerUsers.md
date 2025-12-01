@@ -56,8 +56,7 @@ PrepareTable(()->
 |:----------:|:-------:|:-------:|
 {{foreach DockerUser in Page.Table do
 (
-	StorageHandle := DockerUser.GetReadOnlyStorage();
-	Storage:=StorageHandle.Storage;
+	Storage := DockerUser.GetStorageNonBlocking();
 	Used := ToMetricBytes(Storage.UsedStorage);
 	Max := ToMetricBytes(Storage.MaxStorage);
 
