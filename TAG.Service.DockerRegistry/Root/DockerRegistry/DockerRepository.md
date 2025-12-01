@@ -8,13 +8,13 @@ Privilege: Admin.Communication.Sniffer
 Privilege: Admin.Communication.DockerRegistry
 Login: /Login.md
 CSS: Style.cssx
-Parameter: ObjectId
+Parameter: guid
 
 {{  
-Repo := select top 1 * from DockerRepository where ObjectId=ObjectId;
+Repo := select top 1 * from DockerRepository where Guid=guid;
 
 if Repo = null then
-    NotFound("Repository with object id " + ObjectId + " does not exist.");
+    NotFound("Repository with object guid " + guid + " does not exist.");
 
 if exists(Posted) then
 (
@@ -125,8 +125,9 @@ foreach Image in Page.Table do
     ]]| ((Image.Tag)) [[;
     ]]| ((Image.Digest)) [[;
     ]]| ((ToMetricBytes(Size);)) [[;
-    ]]| [[;
-);
+    ]]| 
+[[;
+)
 }}
 
 ============================================================================

@@ -2,19 +2,12 @@ Organizations:
 * Create
 * Auto create repo
 
-Users:
-* public interface to create new repo
-
 General:
-* delete dangling blobs
-* More image formats?
 * List only public in catalog
 
-
-
-vad som krävs:
-* vi ska kunna manager för våra klienter att kunna navände neuronen för deras images. För detta krävs
-	- manega organisationer så de kan publisha och sådant
-	- ifall dom äger neuron ska dom lätt kunan skapa repos
-		- eller sätta på auto skapa
-	- kunna göra så att den senaste pushad blir latestw
+vad som krï¿½vs:
+* vi ska kunna manager fï¿½r vï¿½ra klienter att kunna navï¿½nde neuronen fï¿½r deras images. Fï¿½r detta krï¿½vs
+	- manega organisationer sï¿½ de kan publisha och sï¿½dant
+	- ifall dom ï¿½ger neuron ska dom lï¿½tt kunan skapa repos
+		- eller sï¿½tta pï¿½ auto skapa
+	- kunna gï¿½ra sï¿½ att den senaste pushad blir latestw

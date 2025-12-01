@@ -64,7 +64,7 @@ PrepareTable(()->
 (
 	Owner := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerActor where Guid=Repository.OwnerGuid;
 
-	]]| [((MarkdownEncode(UN:=Repository.RepositoryName);))](DockerRepository.md?objectId=((Repository.ObjectId.ToString();))) [[;
+	]]| [((MarkdownEncode(UN:=Repository.RepositoryName);))](DockerRepository.md?guid=((Repository.Guid))) [[;
 	]]| [((MarkdownEncode(EM:=Repository.OwnerGuid);))] [[;
 	if Owner is TAG.Networking.DockerRegistry.Model.DockerUser then(
 	]]| [((Owner.AccountName))](DockerUser.md?guid=((Owner.Guid))) [[;

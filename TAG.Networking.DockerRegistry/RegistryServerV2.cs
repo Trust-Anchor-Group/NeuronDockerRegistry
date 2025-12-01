@@ -15,8 +15,12 @@ using Waher.Networking.HTTP;
 using Waher.Networking.Sniffers;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
+using Waher.Persistence.FullTextSearch.Tokenizers;
 using Waher.Script;
+using Waher.Script.Functions.Vectors;
 using Waher.Service.IoTBroker.DataStorage;
+using Waher.Service.IoTBroker.StateMachines.Model.Actions.EventLog;
+using Waher.Service.IoTBroker.StateMachines.Model.Actions.Runtime;
 
 namespace TAG.Networking.DockerRegistry
 {
@@ -181,6 +185,48 @@ namespace TAG.Networking.DockerRegistry
                 }
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
+
+                if (ApiResource == "/_catalog")
+                {
+                    List<DockerRepository> ListableRepositories = new List<DockerRepository>();
+                    DockerActor[] Actors = await GetActors(Request);
+
+                    foreach (DockerActor DockerActor in Actors)
+                    {
+                        ListableRepositories.AddRange(await Database.Find<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("OwnerGuid", DockerActor.Guid))));
+
+                        DockerRepositoryPrivilege[] Privilages = (await Database.Find<DockerRepositoryPrivilege>(new FilterAnd(new FilterFieldEqualTo("ActorGuid", DockerActor.Guid)))).ToArray();
+                        foreach (DockerRepositoryPrivilege Privilege in Privilages)
+                        {
+                            ListableRepositories.Add(await Database.FindFirstIgnoreRest<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("Guid", Privilege.RepositoryGuid))));
+                        }
+                    }
+
+                    for (int i = ListableRepositories.Count() - 1; i >= 0; i--)
+                    {
+                        for (int j = i - 1; j >= 0; j--)
+                        {
+                            if (ListableRepositories[j].RepositoryName == ListableRepositories[i].RepositoryName)
+                            {
+                                ListableRepositories.RemoveAt(i);
+                                break;
+                            }
+                        }
+                    }
+
+                    if (IsPaginated(Request, out int First, out int Count))
+                    {
+                        ListableRepositories.RemoveRange(0, First);
+                        ListableRepositories.RemoveRange(First, Count);
+                    }
+
+                    await Response.Return(new Dictionary<string, object>()
+                        {
+                            { "repositories", ListableRepositories.Select(x => x.RepositoryName) }
+                        });
+                    return;
+                }
+
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
 
                 DockerActor Actor;
@@ -200,36 +246,11 @@ namespace TAG.Networking.DockerRegistry
                     case "/blobs/uploads":
                         await blobUploadEndpoints.GET(Request, Response, Interval, Actor, Repository, ReferenceString);
                         return;
-                    case "/tags":
+                    case "/tags/list":
                         await tagsEndpoints.GET(Request, Response, Actor, Repository, ReferenceString);
                         return;
                     case "/manifests":
                         await manifestEndpoints.GET(Request, Response, Actor, Repository, ReferenceString);
-                        return;
-                    case "/_catalog":
-                        object Result;
-                        if (IsPaginated(Request, out bool HasLast, out Variables Pagination))
-                        {
-                            if (HasLast)
-                                Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages' where Image>Last", Pagination);
-                            else
-                                Result = await Expression.EvalAsync("select top N distinct Image from 'DockerImages'", Pagination);
-
-                            SetLastHeader(Response, "/v2/_catalog?", Result, Pagination);
-                        }
-                        else
-                        {
-                            if (HasLast)
-                                Result = await Expression.EvalAsync("select distinct Image from 'DockerImages' where Image>Last", Pagination);
-                            else
-                                Result = await Expression.EvalAsync("select distinct Image from 'DockerImages'");
-                        }
-
-                        Response.StatusCode = 200;
-                        await Response.Return(new Dictionary<string, object>()
-                        {
-                            { "repositories", Result }
-                        });
                         return;
                     default:
                         throw new BadRequestException(new DockerErrors(DockerErrorCode.UNSUPPORTED, "The operation is unsupported."), apiHeader);
@@ -322,8 +343,6 @@ namespace TAG.Networking.DockerRegistry
                     case "/manifests":
                         await manifestEndpoints.DELETE(Request, Response, Actor, Repository, ReferenceString);
                         return;
-                    case "/_catalog":
-                    // TODO
                     case "/tags":
                     // TODO
                     default:
@@ -519,15 +538,15 @@ namespace TAG.Networking.DockerRegistry
         {
             List<DockerActor> Actors = (await GetActors(Request)).ToList();
 
-            for(int i = Actors.Count(); i >= 0; i--)
+            for (int i = Actors.Count(); i >= 0; i--)
             {
                 if (!Actors[i].Options.IsOptionTrue(ActorOptions.CanAutoCreateRepository))
                     Actors.RemoveAt(i);
             }
 
             DockerActor Chosen = null;
-        
-            foreach(DockerActor Actor in Actors)
+
+            foreach (DockerActor Actor in Actors)
             {
                 if (!(Actor.Options.TryGetOption(ActorOptions.AutoCreateRepositoryRoot, out object RootNameObj) && RootNameObj is string RootName))
                     continue;
@@ -727,10 +746,6 @@ namespace TAG.Networking.DockerRegistry
         {
             Response.SetHeader(apiHeader.Key, apiHeader.Value);
         }
-
-
-
-
         public static void SetLastHeader(HttpResponse Response, string BaseQuery, object Result, Variables Pagination)
         {
             if (Result is Array A)
@@ -758,47 +773,29 @@ namespace TAG.Networking.DockerRegistry
                 }
             }
         }
-        public static bool IsPaginated(HttpRequest Request, out bool HasLast, out Variables Pagination, params Variable[] Variables)
+        public static bool IsPaginated(HttpRequest Request, out int First, out int Count)
         {
-            Pagination = null;
-            HasLast = false;
-
-            if ((Variables?.Length ?? 0) > 0)
-            {
-                Pagination = new Variables();
-
-                foreach (Variable v in Variables)
-                    Pagination[v.Name] = v.ValueObject;
-            }
-
+            Count = -1;
+            First = 0;
             if (Request.Header.TryGetQueryParameter("n", out string NStr))
             {
                 if (!int.TryParse(NStr, out int N) || N < 0)
                     throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid number of results requested."), apiHeader);
-
-                Pagination ??= new Variables();
-                Pagination["N"] = N;
-
-                if (Request.Header.TryGetQueryParameter("last", out string Last))
-                {
-                    HasLast = true;
-                    Pagination["Last"] = Last;
-                }
-
-                return true;
+                Count = N;
             }
-            else
+
+            if (Request.Header.TryGetQueryParameter("last", out string LastStr))
             {
-                if (Request.Header.TryGetQueryParameter("last", out string Last))
-                {
-                    HasLast = true;
+                if (!int.TryParse(LastStr, out int Last) || Last < 0)
+                    throw new BadRequestException(new DockerErrors(DockerErrorCode.PAGINATION_NUMBER_INVALID, "Invalid last "), apiHeader);
 
-                    Pagination ??= new Variables();
-                    Pagination["Last"] = Last;
-                }
-
-                return false;
+                First = Last;
             }
+
+            if (Count < 0)
+                return false;
+
+            return true;
         }
         #endregion
 
