@@ -30,9 +30,7 @@ namespace TAG.Service.DockerRegistry
 
         private RegistryServerV2 server;
         private LiveStorageView liveStorageView;
-
         private Scheduler blobClearSchedule;
-
         public static RegistryService Instance => instance;
 
         /// <summary>
@@ -136,7 +134,7 @@ namespace TAG.Service.DockerRegistry
             // delete owned repos
             await Database.FindDelete<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("OwnerGuid", Actor.Guid)));
             // delete storage
-            await Database.Delete((await Actor.GetWritableStorage()));
+            await Database.FindDelete<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("OwnerGuid", Actor.Guid)));
             // delete all privileges
             await Database.FindDelete<DockerRepositoryPrivilege>(new FilterAnd(new FilterFieldEqualTo("ActorGuid", Actor.Guid)));
         }

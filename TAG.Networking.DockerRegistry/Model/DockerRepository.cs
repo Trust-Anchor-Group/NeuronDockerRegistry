@@ -1,9 +1,13 @@
 ﻿using System;
+using System.Data;
 using System.Text.RegularExpressions;
 using System.Threading.Tasks;
 using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
+using Waher.Security;
+using Waher.Security.Users;
+using Waher.Service.IoTBroker.StateMachines.Model.Actions.Runtime;
 
 namespace TAG.Networking.DockerRegistry.Model
 {
@@ -12,7 +16,7 @@ namespace TAG.Networking.DockerRegistry.Model
     [Index("RepositoryName")]
     [Index("OwnerGuid")]
     [Index("IsPrivate")]
-    public class DockerRepository
+    public class DockerRepository : IDashboardAuthorizable
     {
         private static readonly Regex RootSegmentPattern = new Regex(@"^[A-Za-z0-9._-]+$", RegexOptions.Compiled);
 
@@ -72,6 +76,23 @@ namespace TAG.Networking.DockerRegistry.Model
         {
             this.repositoryName = RepositoryName;
             this.ownerGuid = Actor.Guid;
+        }
+
+        // TODO: Fine grain permissions
+        public async Task<bool> IsAuthorized(IUser User, string Privilege)
+        {
+            if (User.HasPrivilege(DashboardPrivileges.Admin))
+                return true;
+
+            DockerActor Owner = await Database.FindFirstIgnoreRest<DockerActor>(new FilterAnd(new FilterFieldEqualTo("Guid", OwnerGuid)));
+
+            if (Owner is DockerUser DockerUser)
+                return await DockerUser.IsAuthorized(User, Privilege);
+
+            if (Owner is DockerOrganization Org)
+                return await Org.IsAuthorized(User, Privilege);
+
+            return false;
         }
 
         public async Task<bool> HasPermission(DockerActor Actor, RepositoryAction Action)
@@ -199,6 +220,26 @@ namespace TAG.Networking.DockerRegistry.Model
                 return false;
 
             return true;
+        }
+
+        public async static Task<DockerRepository> CreateInsertRepository(string Name, bool IsPrivate, Guid OwnerGuid)
+        {
+            DockerRepository Prev = await Database.FindFirstIgnoreRest<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("RepositoryName", Name)));
+
+            if (!(Prev is null))
+                throw new DuplicateNameException("Repository with name " + Name + " already exists.");
+
+            DockerRepository NewRepo = new DockerRepository()
+            {
+                Guid = Guid.NewGuid(),
+                RepositoryName = Name,
+                IsPrivate = IsPrivate,
+                OwnerGuid = OwnerGuid,
+            };
+
+            await Database.Insert(NewRepo);
+
+            return NewRepo;
         }
 
         public enum RepositoryAction

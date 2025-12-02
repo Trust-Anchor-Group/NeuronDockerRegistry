@@ -15,12 +15,8 @@ using Waher.Networking.HTTP;
 using Waher.Networking.Sniffers;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
-using Waher.Persistence.FullTextSearch.Tokenizers;
 using Waher.Script;
-using Waher.Script.Functions.Vectors;
 using Waher.Service.IoTBroker.DataStorage;
-using Waher.Service.IoTBroker.StateMachines.Model.Actions.EventLog;
-using Waher.Service.IoTBroker.StateMachines.Model.Actions.Runtime;
 
 namespace TAG.Networking.DockerRegistry
 {
@@ -231,7 +227,7 @@ namespace TAG.Networking.DockerRegistry
 
                 DockerActor Actor;
                 if (Repository == null)
-                    Actor = await GetEffectiveActor(Request, RepositoryName);
+                    (Actor, Repository) = await GetEffectiveActor(Request, RepositoryName);
                 else
                     Actor = await GetEffectiveActor(Request, Repository);
 
@@ -286,7 +282,7 @@ namespace TAG.Networking.DockerRegistry
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
                 DockerActor Actor;
                 if (Repository == null)
-                    Actor = await GetEffectiveActor(Request, RepositoryName);
+                    (Actor, Repository) = await GetEffectiveActor(Request, RepositoryName);
                 else
                     Actor = await GetEffectiveActor(Request, Repository);
 
@@ -325,7 +321,7 @@ namespace TAG.Networking.DockerRegistry
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
                 DockerActor Actor;
                 if (Repository == null)
-                    Actor = await GetEffectiveActor(Request, RepositoryName);
+                    (Actor, Repository) = await GetEffectiveActor(Request, RepositoryName);
                 else
                     Actor = await GetEffectiveActor(Request, Repository);
 
@@ -383,7 +379,7 @@ namespace TAG.Networking.DockerRegistry
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
                 DockerActor Actor;
                 if (Repository == null)
-                    Actor = await GetEffectiveActor(Request, RepositoryName);
+                    (Actor, Repository) = await GetEffectiveActor(Request, RepositoryName);
                 else
                     Actor = await GetEffectiveActor(Request, Repository);
 
@@ -441,7 +437,7 @@ namespace TAG.Networking.DockerRegistry
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
                 DockerActor Actor;
                 if (Repository == null)
-                    Actor = await GetEffectiveActor(Request, RepositoryName);
+                    (Actor, Repository) = await GetEffectiveActor(Request, RepositoryName);
                 else
                     Actor = await GetEffectiveActor(Request, Repository);
 
@@ -534,7 +530,7 @@ namespace TAG.Networking.DockerRegistry
         /// <param name="RepositoryName"></param>
         /// <returns></returns>
         /// <exception cref="ForbiddenException"></exception>
-        private async Task<DockerActor> GetEffectiveActor(HttpRequest Request, CaseInsensitiveString RepositoryName)
+        private async Task<(DockerActor, DockerRepository)> GetEffectiveActor(HttpRequest Request, CaseInsensitiveString RepositoryName)
         {
             List<DockerActor> Actors = (await GetActors(Request)).ToList();
 
@@ -544,20 +540,26 @@ namespace TAG.Networking.DockerRegistry
                     Actors.RemoveAt(i);
             }
 
-            DockerActor Chosen = null;
-
             foreach (DockerActor Actor in Actors)
             {
-                if (!(Actor.Options.TryGetOption(ActorOptions.AutoCreateRepositoryRoot, out object RootNameObj) && RootNameObj is string RootName))
-                    continue;
-
-                if (!RepositoryName.StartsWith(RootName))
-                    continue;
-
-                Chosen = Actor;
+                DockerRepository Repository = await TryAutoCreateRepository(Actor, RepositoryName);
+                if (!(Repository is null))
+                    return (Actor, Repository);
             }
 
-            return Chosen;
+            return (null, null);
+        }
+
+        private async Task<DockerRepository> TryAutoCreateRepository(DockerActor Actor, CaseInsensitiveString RepositoryName)
+        {
+            if (!(Actor.Options.TryGetOption(ActorOptions.AutoCreateRepositoryRoot, out object RootNameObj) && RootNameObj is string RootName))
+                return null;
+
+            if (!RepositoryName.StartsWith(RootName))
+                return null;
+
+            DockerRepository Repository = await DockerRepository.CreateInsertRepository(RepositoryName, true, Actor.Guid);
+            return Repository;
         }
 
         private async Task<DockerRepository> GetRepository(HttpRequest Request, string RepositoryName)
@@ -831,6 +833,10 @@ namespace TAG.Networking.DockerRegistry
         public async Task DisposeAsync()
         {
             DanglingDockerBlob[] DanglingBlobs = (await Database.Find<DanglingDockerBlob>()).ToArray();
+
+            if (DanglingBlobs is null)
+                return;
+
             Task[] tasks = new Task[DanglingBlobs.Length * 2];
 
             for (int i = 0; i < DanglingBlobs.Length; i++)

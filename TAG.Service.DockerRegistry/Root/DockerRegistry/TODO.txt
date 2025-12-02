@@ -11,3 +11,9 @@ vad som kr�vs:
 	- ifall dom �ger neuron ska dom l�tt kunan skapa repos
 		- eller s�tta p� auto skapa
 	- kunna g�ra s� att den senaste pushad blir latestw
+
+Permisions:
+Admin.DockerRegistry.Read
+Admin.DockerRegistry.Write
+Admin.DockerRegistry.Update
+Admin.DockerRegistry.Delete

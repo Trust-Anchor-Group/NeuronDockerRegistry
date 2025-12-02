@@ -3,13 +3,13 @@ Master: /Master.md
 JavaScript: /Events.js
 JavaScript: /TargetBlank.js
 UserVariable: User
-Privilege: Admin.Communication.Sniffer
-Privilege: Admin.Communication.DockerRegistry
+Privilege: DockerRegistry
 Login: /Login.md
 Parameter: Guid
 
 {{
     Storage := select top 1 * from DockerStorage where Guid=Guid;
+    DockerDashboardAssertPermisions(Storage, "DockerRegistry.Read");
 
     if Storage = null then (
         NotFound("No storage with guid " + Guid);
@@ -18,10 +18,14 @@ Parameter: Guid
 
     if Exists(Posted) then (
         if Posted matches { "resync": Bool(PResync )} then (
+            Authorize(User, "Administrator.DockerRegistry");
+
             Actor:=select top 1 * from DockerActor where StorageGuid=Guid;
 
             if Actor = null then
                 NotFound("There is no owner of this storage");
+
+            DockerDashboardAssertPermisions(Storage, "DockerRegistry.Update");
 
             Actor.ReSyncStorage();
         );
@@ -40,8 +44,16 @@ StorageUsed: {{
 }}
 </h2>
 
-<form method="POST">
-    <input name="resync" value="true" hidden/>
-    <button>Resync counters</button>
-</form>
+
+{{
+    if User.HasPrivilege("Administrator.DockerRepository") then (
+        ]]
+        <form method="POST">
+            <input name="resync" value="true" hidden/>
+            <button>Resync counters</button>
+        </form>
+        [[
+    )
+}}
+
 <button class="posButton" onclick="OpenPage('/DockerRegistry/Sniffers/StorageSniffer.md?Guid={{Guid}}')">Sniffer</button>

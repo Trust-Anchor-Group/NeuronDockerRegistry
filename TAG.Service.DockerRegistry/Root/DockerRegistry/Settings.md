@@ -7,8 +7,8 @@ Script: /Controls/SimpleTable.script
 JavaScript: /TargetBlank.js
 JavaScript: /Sniffers/Sniffer.js
 UserVariable: User
+Privilege: DockerRegistry
 CSS: Style.cssx
-Privilege: Admin.Docker
 Login: /Login.md
 Parameter: Purge
 

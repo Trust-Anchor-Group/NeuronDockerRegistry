@@ -7,13 +7,13 @@ using Waher.Persistence;
 using Waher.Persistence.Attributes;
 using Waher.Persistence.Filters;
 using Waher.Runtime.Inventory;
-using Waher.Runtime.Threading;
+using Waher.Security;
+using Waher.Security.Users;
 namespace TAG.Networking.DockerRegistry.Model
 {
     [CollectionName("DockerStorage")]
-    [TypeName(TypeNameSerialization.FullName)]
     [Index("Guid")]
-    public class DockerStorage : IJsonEncodingHint
+    public class DockerStorage : IJsonEncodingHint, IDashboardAuthorizable
     {
         /// <summary>
         /// Object ID
@@ -165,6 +165,22 @@ namespace TAG.Networking.DockerRegistry.Model
         private static string ToMetricBytes(double value)
         {
             return "TODO";
+        }
+
+        public async Task<bool> IsAuthorized(IUser User, string Privilege)
+        {
+            if (User.HasPrivilege(DashboardPrivileges.Admin))
+                return true;
+
+            DockerActor Owner = await Database.FindFirstIgnoreRest<DockerActor>(new FilterAnd(new FilterFieldEqualTo("StorageGuid", Guid)));
+
+            if (Owner is DockerUser DockerUser)
+                return await DockerUser.IsAuthorized(User, Privilege);
+
+            if (Owner is DockerOrganization Org)
+                return await Org.IsAuthorized(User, Privilege);
+
+            return false;
         }
     }
 

@@ -4,8 +4,7 @@ JavaScript: /Events.js
 JavaScript: /TargetBlank.js
 UserVariable: User
 Script: /Controls/SimpleTable.script
-Privilege: Admin.Communication.Sniffer
-Privilege: Admin.Communication.DockerRegistry
+Privilege: DockerRegistry
 Login: /Login.md
 CSS: Style.cssx
 Parameter: guid
@@ -16,13 +15,23 @@ Repo := select top 1 * from DockerRepository where Guid=guid;
 if Repo = null then
     NotFound("Repository with object guid " + guid + " does not exist.");
 
+DockerDashboardAssertPermisions(Repo, "DockerRegistry.Read");
+
 if exists(Posted) then
 (
     // delete repository
     if Posted matches { "delete": Bool(PDelete) } and PDelete then
     (
+        DockerDashboardAssertPermisions(Repo, "DockerRegistry.Delete");
         DeleteObject(Repo);
 		TemporaryRedirect("Repositories.md");
+    );
+
+    // update visibility
+    if Posted matches { "setVisibility": Bool(PSetVisibility), "visibility": PVisibility } then (
+        DockerDashboardAssertPermisions(Repo, "DockerRegistry.Update");
+        Repo.IsPrivate:= not (PVisibility = "public");
+        UpdateObject(Repo);
     );
 
     // add whitelist
@@ -31,6 +40,7 @@ if exists(Posted) then
         if DockerUser = null then (
             ]] > No user with account name ((PAccountName)) exists [[;
         ) else (
+            DockerDashboardAssertPermisions(Repo, "DockerRegistry.Update");
             Repo.CreatePrivileges(DockerUser, true, true);
             ]] +> Whitelisted user ((PAccountName)) [[;
         )
@@ -43,6 +53,7 @@ if exists(Posted) then
         if DockerUser = null or Pri = null then (
             ]] > No user with guid ((PAccountGuid)) is whitelisted [[;
         ) else (
+            DockerDashboardAssertPermisions(Repo, "DockerRegistry.Update");
             DeleteObject(Pri);
             ]] +> Removed user ((DockerUser.AccountName)) whitelist privileges [[;
         )
@@ -58,18 +69,32 @@ if exists(Posted) then
 
 ==================================================
 
-## Owner:
+<div class="docker-row">
+<div>
 {{
     Owner := select top 1 * from DockerActor where Guid=Repo.OwnerGuid;
     if Owner = null then (
         ]] > No owner [[;
     ) else (
         if Owner is TAG.Networking.DockerRegistry.Model.DockerUser then
-            ]] User: [((Owner.AccountName))](DockerUser.md?guid=((Owner.Guid))) [[
+            ]] <h2>Owner</h2> User: [((Owner.AccountName))](DockerUser.md?guid=((Owner.Guid))) [[
         else 
-            ]] Organization: [((Owner.OrganizationName))](DockerOrganization.md?guid=((Owner.Guid))) [[
+            ]] <h2>Owner</h2> Organization: [((Owner.OrganizationName))](DockerOrganization.md?guid=((Owner.Guid))) [[
     );
 }}
+</div>
+<form method="POST">  
+    <div>
+        <label for="visibility">Visibility</label>
+        <select name="visibility" id="visibility">
+            <option value="public" {{if not Repo.IsPrivate then "selected" else ""}}>Public</option>
+            <option value="private" {{if Repo.IsPrivate  then "selected" else ""}}>Private</option>
+        </select>
+    </div>
+    <input name="setVisibility" value="true" hidden>
+    <button>Update visibility</button>
+</form>
+</div>
 
 ============================================================================
 

@@ -10,6 +10,7 @@ using Waher.Script.Abstraction.Elements;
 using Waher.Script.Exceptions;
 using Waher.Script.Model;
 using Waher.Script.Objects;
+using Waher.Script.Persistence.Functions;
 
 namespace TAG.Service.DockerRegistry.Script
 {
@@ -83,15 +84,7 @@ namespace TAG.Service.DockerRegistry.Script
             if (Actor is null)
                 throw new ScriptRuntimeException("No owner with Guid " + OwnerGuid.ToString(), this);
 
-            DockerRepository NewRepo = new DockerRepository()
-            {
-                Guid = Guid.NewGuid(),
-                RepositoryName = Name,
-                IsPrivate = IsPrivate,
-                OwnerGuid = OwnerGuid,
-            };
-
-            await Database.Insert(NewRepo);
+            DockerRepository NewRepo = await DockerRepository.CreateInsertRepository(Name, IsPrivate, OwnerGuid);
 
             return new ObjectValue(NewRepo);
         }

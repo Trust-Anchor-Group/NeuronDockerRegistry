@@ -74,6 +74,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                 }
             }
         }
+
         public virtual void Dispose()
         {
 

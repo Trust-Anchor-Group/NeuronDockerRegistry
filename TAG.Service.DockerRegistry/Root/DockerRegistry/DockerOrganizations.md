@@ -4,7 +4,7 @@ Master: /Master.md
 JavaScript: /Events.js
 Script: /Controls/SimpleTable.script
 UserVariable: User
-Privilege: Admin.Docker
+Privilege: DockerRegistry.Read
 CSS: Style.cssx
 Login: /Login.md
 
@@ -17,6 +17,7 @@ Login: /Login.md
 {{
 	if (exists(Posted) and Posted matches { "BrokerAccountName": PName, "MaxStorage": PMaxStorage }) then
 	(
+		Authorize(User, "Administrator.Docker.Create");
 		max:=Number(PMaxStorage);
 		DockerCreateOrganization(PName, max);
 		]]+> Organization "((PName))" created with max storage ((ToMetricBytes(max);)). [[
@@ -54,15 +55,17 @@ PrepareTable(()->
 |:----------:|:-------:|:-------:|
 {{foreach Org in Page.Table do
 (
-	Storage := Org.GetStorageNonBlocking();
-	Used := ToMetricBytes(Storage.UsedStorage);
-	Max := ToMetricBytes(Storage.MaxStorage);
+	if (DockerDashboardHasPermisions(Org, "DockerRegistry.Read")) then (
+		Storage := Org.GetStorageNonBlocking();
+		Used := ToMetricBytes(Storage.UsedStorage);
+		Max := ToMetricBytes(Storage.MaxStorage);
 
-	]]| [((MarkdownEncode(UN:=Org.OrganizationName);))](DockerOrganization.md?guid=((Org.Guid))) [[;
-	]]| [((Org.ToString();))] [[;
-	]]| [((Used)) of ((Max)) used] [[;
-	]]|
+		]]| [((MarkdownEncode(UN:=Org.OrganizationName);))](DockerOrganization.md?guid=((Org.Guid))) [[;
+		]]| [((Org.ToString();))] [[;
+		]]| [((Used)) of ((Max)) used] [[;
+		]]|
 [[
+	);
 )
 }}
 	</div>

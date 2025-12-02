@@ -6,40 +6,48 @@ JavaScript: Docker.js
 JavaScript: /TargetBlank.js
 Script: /Controls/SimpleTable.script
 UserVariable: User
-Privilege: Admin.Docker
+Privilege: DockerRegistry
 Login: /Login.md
 CSS: Style.cssx
 Parameter: Guid
 
 {{
-DockerUser := select top 1 * from DockerRegistry.Model.DockerUser where Guid=Guid;
+DockerUser := select top 1 * from TAG.Networking.DockerRegistry.Model.DockerUser where Guid=Guid;
 
 if DockerUser = null then
 	NotFound("User with Guid " + Guid + " does not exist.");
+DockerDashboardAssertPermisions(DockerUser, "DockerRegistry.Read");
 
 Storage := DockerUser.GetStorageNonBlocking();
-
+DockerDashboardAssertPermisions(Storage, "DockerRegistry.Read");
 
 if exists(Posted) then
 (
 	if Posted matches { "delete": Bool(PDelete) } and PDelete = true then (
+		DockerDashboardAssertPermisions(DockerUser, "DockerRegistry.Delete");
 		DeleteObject(DockerUser);
 		TemporaryRedirect("DockerUsers.md");
 	);
 
 	if Posted matches { "maxStorage": Number(PMaxStorage) } and PMaxStorage > 0 then (
+		DockerDashboardAssertPermisions(Storage, "DockerRegistry.Update");
 		Storage.MaxStorage:= PMaxStorage;
 		UpdateObject(Storage);
 	);
 
-		if Posted matches { "brokerAccount": String(PBrokerAccount) } then (
+	if Posted matches { "brokerAccount": String(PBrokerAccount) } then (
 		DockerUser.AccountName:=PBrokerAccount;
+		DockerDashboardAssertPermisions(DockerUser, "DockerRegistry.Update");
 		UpdateObject(DockerUser);
 	);
 
 	if Posted matches { "createRepository": Bool(PCreate), "repositoryName": PRepositoryName, "visibility": PVisibility} then
 	(
+		if not StartsWith(PRepositoryName, DockerUser.AccountName + "/") then
+			Authorize(User, "Administrator.Docker.Create");
+
 		DockerCreateRepository(PRepositoryName, DockerUser.Guid.ToString(), PVisibility = "private");
+		DockerDashboardAssertPermisions(DockerUser, "DockerRegistry.Create");
 		]]+> created repository at ((PRepositoryName)) [[
 	)
 );
@@ -110,7 +118,7 @@ PrepareTable(()->
 |:----------|
 {{foreach Repository in Page.Table do
 (
-	]]| [((Repository.RepositoryName))](DockerRepository.md?objectId=((Repository.ObjectId.ToString();))) [[;
+	]]| [((Repository.RepositoryName))](DockerRepository.md?Guid=((Repository.Guid))) [[;
 	]]|
 [[
 )

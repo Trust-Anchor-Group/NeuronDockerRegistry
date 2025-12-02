@@ -4,7 +4,7 @@ Master: /Master.md
 JavaScript: /Events.js
 Script: /Controls/SimpleTable.script
 UserVariable: User
-Privilege: Admin.Docker
+Privilege: DockerRegistry.Read
 CSS: Style.cssx
 Login: /Login.md
 
@@ -14,11 +14,10 @@ Login: /Login.md
 
 ===============================================================
 
-
-
 {{
 	if (exists(Posted) and Posted matches { "BrokerAccountName": PName, "MaxStorage": PMaxStorage }) then
 	(
+		Authorize(User, "Administrator.Docker.Create");
 		max:=Number(PMaxStorage);
 		DockerCreateUser(PName, max);
 		]]+> User "((PName))" created with max storage ((ToMetricBytes(max);)). [[
@@ -28,6 +27,9 @@ Login: /Login.md
 <div class="docker-double">
 	<form id="create-actor" action="" method="POST">
 
+{{
+	if User.HasPrivilege("Administrator.DockerRegistry.Create") then (
+		]]
 ## Create User
 	
 		<p>
@@ -41,6 +43,9 @@ Login: /Login.md
 		<button>Create</button>
 	</form>
 	<div>
+	[[;
+	);
+}}
 
 ## Users
 
@@ -56,15 +61,17 @@ PrepareTable(()->
 |:----------:|:-------:|:-------:|
 {{foreach DockerUser in Page.Table do
 (
-	Storage := DockerUser.GetStorageNonBlocking();
-	Used := ToMetricBytes(Storage.UsedStorage);
-	Max := ToMetricBytes(Storage.MaxStorage);
+	if (DockerDashboardHasPermisions(DockerUser, "DockerRegistry.Read")) then (
+		Storage := DockerUser.GetStorageNonBlocking();
+		Used := ToMetricBytes(Storage.UsedStorage);
+		Max := ToMetricBytes(Storage.MaxStorage);
 
-	]]| [((MarkdownEncode(UN:=DockerUser.AccountName);))](DockerUser.md?Guid=((DockerUser.Guid))) [[;
-	]]| [((DockerUser.Guid.ToString();))] [[;
-	]]| [((Used)) of ((Max)) used] [[;
-	]]|
+		]]| [((MarkdownEncode(UN:=DockerUser.AccountName);))](DockerUser.md?Guid=((DockerUser.Guid))) [[;
+		]]| [((DockerUser.Guid.ToString();))] [[;
+		]]| [((Used)) of ((Max)) used] [[;
+		]]|
 [[
+	);
 )
 }}
 	</div>
