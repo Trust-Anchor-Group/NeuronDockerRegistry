@@ -30,7 +30,7 @@ Login: /Login.md
 ## Create Organization
 	
 		<p>
-			<label for="BrokerAccountName">Organization Name (match with organization name on ids)</label>  
+			<label for="BrokerAccountName">Organization Name (must match organization name (ORGNAME) in legal identities)</label>  
 			<input type="text" id="BrokerAccountName" name="BrokerAccountName" autofocus required/>
 		</p>
 		<p>

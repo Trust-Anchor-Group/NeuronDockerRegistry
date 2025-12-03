@@ -4,13 +4,50 @@
 	</PropertyGroup>
 
 	<ItemGroup>
+		<None Remove="Root\DockerRegistry\Docker.js" />
+		<None Remove="Root\DockerRegistry\DockerOrganization.md" />
+		<None Remove="Root\DockerRegistry\DockerOrganizations.md" />
+		<None Remove="Root\DockerRegistry\DockerRepository.md" />
+		<None Remove="Root\DockerRegistry\DockerStorage.md" />
+		<None Remove="Root\DockerRegistry\DockerUser.md" />
+		<None Remove="Root\DockerRegistry\DockerUsers.md" />
+		<None Remove="Root\DockerRegistry\Repositories.md" />
+		<None Remove="Root\DockerRegistry\Settings.md" />
 		<None Remove="Root\DockerRegistry\Sniffers\Sniffer.md" />
 		<None Remove="Root\DockerRegistry\Sniffers\StorageSniffer.js" />
 		<None Remove="Root\DockerRegistry\Sniffers\StorageSniffer.md" />
+		<None Remove="Root\DockerRegistry\Style.cssx" />
 		<None Remove="TAG.Service.DockerRegistry.manifest" />
 	</ItemGroup>
 
 	<ItemGroup>
+		<Content Include="Root\DockerRegistry\Docker.js">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Root\DockerRegistry\DockerOrganization.md">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Root\DockerRegistry\DockerOrganizations.md">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Root\DockerRegistry\DockerRepository.md">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Root\DockerRegistry\DockerStorage.md">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Root\DockerRegistry\DockerUser.md">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Root\DockerRegistry\DockerUsers.md">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Root\DockerRegistry\Repositories.md">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Root\DockerRegistry\Settings.md">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
 		<Content Include="Root\DockerRegistry\Sniffers\Sniffer.md">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
@@ -19,6 +56,9 @@
 		</Content>
 		<Content Include="Root\DockerRegistry\Sniffers\StorageSniffer.md">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+		</Content>
+		<Content Include="Root\DockerRegistry\Style.cssx">
+		  <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
 		</Content>
 		<Content Include="TAG.Service.DockerRegistry.manifest">
 			<CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>

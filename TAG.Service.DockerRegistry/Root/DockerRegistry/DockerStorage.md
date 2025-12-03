@@ -46,7 +46,7 @@ StorageUsed: {{
 
 
 {{
-    if User.HasPrivilege("Administrator.DockerRepository") then (
+    if User.HasPrivilege("Administrator.DockerRegistry") then (
         ]]
         <form method="POST">
             <input name="resync" value="true" hidden/>

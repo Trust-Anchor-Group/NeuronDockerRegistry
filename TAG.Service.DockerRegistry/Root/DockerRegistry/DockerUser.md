@@ -137,6 +137,6 @@ PrepareTable(()->
 	<button onclick="OpenPage('DockerStorage.md?Guid={{Storage.Guid}}')">Storage</button>
 	<div>
 		<p><small>Actor GUID: {{DockerUser.Guid}}</small></p>
-		<p><small>Sstorage GUID: {{Storage.Guid}}</small></p>
+		<p><small>Storage GUID: {{Storage.Guid}}</small></p>
 	</div>
 </div>

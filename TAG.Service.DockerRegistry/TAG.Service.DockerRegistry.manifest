@@ -5,21 +5,21 @@
 	<Assembly fileName="TAG.Service.DockerRegistry.dll"/>
 	<Folder name="Root">
 		<Folder name="DockerRegistry">
+			<Content fileName="Docker.js"/>
+			<Content fileName="DockerOrganizations.md"/>
+			<Content fileName="DockerOrganization.md"/>
+			<Content fileName="DockerRepository.md"/>
+			<Content fileName="DockerStorage.md"/>
+			<Content fileName="DockerUsers.md"/>
+			<Content fileName="DockerUser.md"/>
+			<Content fileName="Repositories.md"/>
+			<Content fileName="Settings.md"/>
+			<Content fileName="Style.cssx"/>
 			<Folder name="Sniffers">
 				<Content fileName="Sniffer.md"/>
 				<Content fileName="StorageSniffer.js"/>
 				<Content fileName="StorageSniffer.md"/>
 			</Folder>
-			<Content fileName="Docker.js"/>
-			<Content fileName="DockerOrganization.md"/>
-			<Content fileName="DockerOrganizations.md"/>
-			<Content fileName="DockerRepository.md"/>
-			<Content fileName="DockerStorage.md"/>
-			<Content fileName="DockerUser.md"/>
-			<Content fileName="DockerUsers.md"/>
-			<Content fileName="Repositories.md"/>
-			<Content fileName="Settings.md"/>
-			<Content fileName="Style.md"/>
 		</Folder>
 	</Folder>
 </Module>

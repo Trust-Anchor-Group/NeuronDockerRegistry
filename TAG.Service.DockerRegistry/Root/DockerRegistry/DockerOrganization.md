@@ -225,6 +225,6 @@ foreach Repository in Repositories do
 	<button onclick="OpenPage('DockerStorage.md?Guid={{Storage.Guid}}')">Storage</button>
 	<div>
 		<p><small>Actor GUID: {{DockerOrganization.Guid}}</small></p>
-		<p><small>Sstorage GUID: {{Storage.Guid}}</small></p>
+		<p><small>Storage GUID: {{Storage.Guid}}</small></p>
 	</div>
 </div>

@@ -14,7 +14,7 @@ Parameter: Purge
 
 {{
 	if exists(Posted) then (
-		Authorize(User, "Administrator.DockerRegistry)
+		Authorize(User, "Administrator.DockerRegistry");
 		if Posted matches { "forceClean": Bool(PForceClean) } then (
 			]] <p>Blobs cleaned: ((TAG.Service.DockerRegistry.RegistryService.Instance.CleanUnusedBlobs();)) </p>[[;
 			]] <p>((TAG.Service.DockerRegistry.RegistryService.Instance.CleanUnmanagedRepositories();)) </p>[[;
@@ -45,7 +45,7 @@ else
 }}>Sniffer</button>
 
 {{
-	if (User.HasPrivilage("Administrator.DockerRegistry")) then (
+	if User.HasPrivilege("Administrator.DockerRegistry") then (
 		]]
 		<form method="POST">
 			<input name="forceClean" value="true" hidden/>

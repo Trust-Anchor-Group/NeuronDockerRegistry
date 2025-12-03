@@ -37,8 +37,8 @@ Login: /Login.md
 			<input type="text" id="BrokerAccountName" name="BrokerAccountName" autofocus required/>
 		</p>
 		<p>
-			<label for="MaxStorage">MaxStorage (In bytes)</label>  
-			<input type="text" id="MaxStorage" name="MaxStorage" placeholder="eg: 3.5e9 for 3.5 GB" autofocus required/>
+			<label for="MaxStorage">Max Storage (In bytes)</label>  
+			<input type="text" id="MaxStorage" name="MaxStorage" placeholder="eg: 3.5e9" autofocus required/>
 		</p>
 		<button>Create</button>
 	</form>
@@ -47,7 +47,7 @@ Login: /Login.md
 	);
 }}
 
-## Users
+## Docker Users
 
 {{
 PrepareTable(()->

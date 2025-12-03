@@ -1,4 +1,4 @@
-Title: Registry Sniffer
+Title: Storage Sniffer
 Master: /Master.md
 JavaScript: /Events.js
 JavaScript: StorageSniffer.js
@@ -24,4 +24,4 @@ Parameter: Guid
 
 ================================================
 
-<div id="sniffer-view">'
+<div id="sniffer-view"></div>

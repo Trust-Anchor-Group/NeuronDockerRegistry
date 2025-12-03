@@ -13,14 +13,12 @@ Login: /Login.md
 Docker Repositories
 ===================
 
-
-
 {{
 	if (exists(Posted) and Posted matches { "RepositoryName": PRepositoryName, "OwnerGuid": POwnerGuid, "Visibility": PVisibility }) then
 	(
 		Authorize(User, "Administrator.Docker.Create");
 		DockerCreateRepository(PRepositoryName, POwnerGuid, PVisibility = "private");
-		]]+> created repository at ((PRepositoryName)) [[
+		]]+> Created repository at ((PRepositoryName)) [[
 	);
 }}
 
