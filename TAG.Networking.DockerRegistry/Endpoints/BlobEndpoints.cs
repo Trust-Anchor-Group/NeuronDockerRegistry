@@ -55,31 +55,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
 		public async Task DELETE(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
 		{
-
-			throw new NotImplementedException("TODO ask peter what todo");
-
-            await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Delete, Request);
-
-            if (!HashDigest.TryParseDigest(Reference, out HashDigest Digest))
-				throw new BadRequestException(new DockerErrors(DockerErrorCode.DIGEST_INVALID, "Invalid BLOB digest reference."), apiHeader);
-
-			DockerBlob blob = await Database.FindFirstIgnoreRest<DockerBlob>(new FilterAnd(
-				new FilterFieldEqualTo("Digest", Digest)));
-
-			if (blob is null)
-				throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UNKNOWN, "BLOB unknown to registry."), apiHeader);
-
-            DockerActor Owner = await Repository.GetOwner();
-            await using WritableStorageHandle Handle = await Owner.GetWritableStorage();
-
-
-            await Database.Delete(blob);
-
-			Response.StatusCode = 202;
-			Response.StatusMessage = "Accepted";
-			Response.ContentLength = 0;
-			Response.SetHeader("Docker-Content-Digest", Digest.ToString());
-			await Response.SendResponse();
+			throw new BadRequestException(new DockerErrors(DockerErrorCode.UNAUTHORIZED, "Deleting blobs via API is not allowed"));
 		}
 	}
 }
