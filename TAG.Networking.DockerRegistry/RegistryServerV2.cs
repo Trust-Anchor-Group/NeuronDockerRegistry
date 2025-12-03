@@ -565,31 +565,6 @@ namespace TAG.Networking.DockerRegistry
         private async Task<DockerRepository> GetRepository(HttpRequest Request, string RepositoryName)
         {
             DockerRepository Repository = await Database.FindFirstIgnoreRest<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("RepositoryName", RepositoryName)));
-
-            if (Repository == null && AutoCreateRepositories)
-            {
-                return null;
-                /*
-                string Owner = Request.User.UserName;
-                string RepositoryBase = Owner + "/";
-
-                if (!RepositoryName.StartsWith(RepositoryBase))
-                    throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Requested access to the resource is denied."), apiHeader);
-
-                IDockerActor[] Actors = await GetActors(Request);
-
-                foreach (IDockerActor Actor in Actors)
-                {
-                    if (Actor is DockerUser DockerUser)
-                    {
-                        Repository = new DockerRepository(RepositoryName, DockerUser);
-                        await Database.Insert(Repository);
-                        break;
-                    }
-                }
-                */
-            }
-
             return Repository;
         }
         #endregion
