@@ -1,41 +1,17 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
 	<PropertyGroup>
 		<TargetFramework>netstandard2.1</TargetFramework>
 	</PropertyGroup>
 
 	<ItemGroup>
-		<ProjectReference Include="..\..\iotbroker\Waher.Service.IoTBroker\Waher.Service.IoTBroker.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Content\Waher.Content.Markdown.Contracts\Waher.Content.Markdown.Contracts.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Content\Waher.Content.Markdown.Latex\Waher.Content.Markdown.Latex.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Content\Waher.Content.Markdown.Wpf\Waher.Content.Markdown.Wpf.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Content\Waher.Content.Markdown.Xamarin\Waher.Content.Markdown.Xamarin.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Content\Waher.Content.Markdown.Xml\Waher.Content.Markdown.Xml.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Content\Waher.Content.Markdown\Waher.Content.Markdown.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Content\Waher.Content.Xml\Waher.Content.Xml.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Content\Waher.Content\Waher.Content.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Events\Waher.Events.Statistics\Waher.Events.Statistics.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Events\Waher.Events\Waher.Events.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Networking\Waher.Networking.HTTP\Waher.Networking.HTTP.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Networking\Waher.Networking.WHOIS\Waher.Networking.WHOIS.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Networking\Waher.Networking.XMPP.Avatar\Waher.Networking.XMPP.Avatar.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Networking\Waher.Networking.XMPP.Software\Waher.Networking.XMPP.Software.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Networking\Waher.Networking\Waher.Networking.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Persistence\Waher.Persistence.Files\Waher.Persistence.Files.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Persistence\Waher.Persistence.FullTextSearch\Waher.Persistence.FullTextSearch.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Persistence\Waher.Persistence.Serialization.Compiled\Waher.Persistence.Serialization.Compiled.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Persistence\Waher.Persistence\Waher.Persistence.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Runtime\Waher.Runtime.HashStore\Waher.Runtime.HashStore.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Runtime\Waher.Runtime.ServiceRegistration\Waher.Runtime.ServiceRegistration.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Runtime\Waher.Runtime.Settings\Waher.Runtime.Settings.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Runtime\Waher.Runtime.Threading\Waher.Runtime.Threading.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Script\Waher.Script.Xml\Waher.Script.Xml.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Script\Waher.Script\Waher.Script.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Security\Waher.Security\Waher.Security.csproj" />
-		<ProjectReference Include="..\..\IoTGateway\Waher.IoTGateway\Waher.IoTGateway.csproj" />
-		<ProjectReference Include="..\..\Neuro-Ledger\Waher.Networking.XMPP.NeuroLedger\Waher.Networking.XMPP.NeuroLedger.csproj" />
-		<ProjectReference Include="..\..\Neuro-Ledger\Waher.Persistence.NeuroLedger\Waher.Persistence.NeuroLedger.csproj" />
-		<ProjectReference Include="..\..\Neuro-Ledger\Waher.Service.NeuroLedger\Waher.Service.NeuroLedger.csproj" />
+		<PackageReference Include="Waher.Content" Version="3.4.1" />
+		<PackageReference Include="Waher.Persistence" Version="1.16.0" />
+		<PackageReference Include="Waher.Networking" Version="4.5.3" />
+		<PackageReference Include="Waher.Networking.HTTP" Version="4.5.2" />
 	</ItemGroup>
 
+	<ItemGroup>
+		<ProjectReference Include="..\..\iotbroker\Waher.Service.IoTBroker\Waher.Service.IoTBroker.csproj" />
+	</ItemGroup>
 </Project>

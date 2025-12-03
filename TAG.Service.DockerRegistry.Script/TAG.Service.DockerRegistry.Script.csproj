@@ -30,6 +30,5 @@
 	</PropertyGroup>
 	<ItemGroup>
 		<ProjectReference Include="..\TAG.Networking.DockerRegistry\TAG.Networking.DockerRegistry.csproj" />
-		<PackageReference Include="Waher.Script" Version="2.13.3" />
 	</ItemGroup>
 </Project>
