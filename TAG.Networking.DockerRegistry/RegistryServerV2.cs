@@ -534,7 +534,7 @@ namespace TAG.Networking.DockerRegistry
         {
             List<DockerActor> Actors = (await GetActors(Request)).ToList();
 
-            for (int i = Actors.Count(); i >= 0; i--)
+            for (int i = Actors.Count() - 1; i >= 0; i--)
             {
                 if (!Actors[i].Options.IsOptionTrue(ActorOptions.CanAutoCreateRepository))
                     Actors.RemoveAt(i);

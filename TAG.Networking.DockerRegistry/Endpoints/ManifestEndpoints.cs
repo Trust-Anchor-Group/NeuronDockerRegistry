@@ -86,7 +86,6 @@ namespace TAG.Networking.DockerRegistry.Endpoints
 
         public async Task PUT(HttpRequest Request, HttpResponse Response, DockerActor Actor, DockerRepository Repository, string Reference)
         {
-
             await AssertRepositoryPrivilages(Actor, Repository, DockerRepository.RepositoryAction.Push, Request);
 
             ContentResponse ManifestContentResponse = await Request.DecodeDataAsync();

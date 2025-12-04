@@ -16,7 +16,7 @@ namespace TAG.Networking.DockerRegistry.Model
         public async ValueTask DisposeAsync()
         {
             await Database.Update(Storage);
-            semaphore?.Dispose();
+            await semaphore?.DisposeAsync();
             semaphore = null;
         }
     }

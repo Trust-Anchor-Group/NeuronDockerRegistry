@@ -166,8 +166,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
             if (!this.uploads.TryGetValue(Uuid, out BlobUpload UploadRecord))
                 throw new NotFoundException(new DockerErrors(DockerErrorCode.BLOB_UPLOAD_UNKNOWN, "BLOB upload unknown to registry."), apiHeader);
 
-            DockerActor Owner = await Repository.GetOwner();
-            await using WritableStorageHandle Handle = await Owner.GetWritableStorage();
+            await using WritableStorageHandle Handle = await Actor.GetWritableStorage();
 
             HashDigest Digest;
 
@@ -190,7 +189,7 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                 {
                     Created = DateTime.Now,
                     Digest = Digest,
-                    Owner = Owner.Guid,
+                    Owner = Actor.Guid,
                     Size = UploadRecord.File.Length
                 };
 
