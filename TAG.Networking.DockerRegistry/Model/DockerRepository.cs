@@ -100,6 +100,8 @@ namespace TAG.Networking.DockerRegistry.Model
             if (Actor == null)
                 return false;
 
+            if (Actor.Guid == OwnerGuid)
+                return true;
 
             switch (Action)
             {

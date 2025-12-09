@@ -77,14 +77,18 @@ namespace TAG.Networking.DockerRegistry.Model
 
         public async Task RegisterDanglingBlob(DanglingDockerBlob blob)
         {
+            if (!IncrementDigest(blob.Digest))
+                return;
+
             UsedStorage += blob.Size;
-            IncrementDigest(blob.Digest);
         }
 
         public async Task UnregisterDanglingBlob(DanglingDockerBlob blob)
         {
+            if (!DecrementDigest(blob.Digest))
+                return;
+
             UsedStorage -= blob.Size;
-            DecrementDigest(blob.Digest);
         }
 
         private async Task RecordDigestReference(HashDigest Digest)

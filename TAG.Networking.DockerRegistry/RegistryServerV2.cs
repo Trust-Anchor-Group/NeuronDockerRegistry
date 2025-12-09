@@ -15,6 +15,7 @@ using Waher.Networking.HTTP;
 using Waher.Networking.Sniffers;
 using Waher.Persistence;
 using Waher.Persistence.Filters;
+using Waher.Runtime.Threading;
 using Waher.Script;
 using Waher.Service.IoTBroker.DataStorage;
 
@@ -434,10 +435,13 @@ namespace TAG.Networking.DockerRegistry
                 SetApiHeader(Response);
 
                 Prepare(Request, out string RepositoryName, out string ApiResource, out string ReferenceString);
+
                 DockerRepository Repository = await GetRepository(Request, RepositoryName);
                 DockerActor Actor;
                 if (Repository == null)
+                {
                     (Actor, Repository) = await GetEffectiveActor(Request, RepositoryName);
+                }
                 else
                     Actor = await GetEffectiveActor(Request, Repository);
 
@@ -542,9 +546,17 @@ namespace TAG.Networking.DockerRegistry
 
             foreach (DockerActor Actor in Actors)
             {
-                DockerRepository Repository = await TryAutoCreateRepository(Actor, RepositoryName);
-                if (!(Repository is null))
-                    return (Actor, Repository);
+                using Semaphore RepositorySemaphore = await Semaphores.BeginWrite("DockerRegistry_Repository_" + RepositoryName);
+                DockerRepository Prev = await Database.FindFirstIgnoreRest<DockerRepository>(new FilterAnd(new FilterFieldEqualTo("RepositoryName", RepositoryName)));
+
+                if (Prev is null)
+                {
+                    DockerRepository Repository = await TryAutoCreateRepository(Actor, RepositoryName);
+                    if (!(Repository is null))
+                        return (Actor, Repository);
+                }
+
+                return (Actor, Prev);
             }
 
             return (null, null);

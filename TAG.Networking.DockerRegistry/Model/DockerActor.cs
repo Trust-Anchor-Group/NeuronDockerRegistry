@@ -13,6 +13,8 @@ namespace TAG.Networking.DockerRegistry.Model
 {
     [CollectionName("DockerActor")]
     [TypeName(TypeNameSerialization.FullName)]
+    [Index("Guid")]
+    [Index("StorageGuid")]
     public abstract class DockerActor
     {
         /// <summary>

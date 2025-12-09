@@ -9,6 +9,8 @@ namespace TAG.Networking.DockerRegistry.Model
     [CollectionName("DanglingDockerBlob")]
     [TypeName(TypeNameSerialization.None)]
     [Index("Owner")]
+    [Index("Digest")]
+    [Index("Created")]
     public class DanglingDockerBlob
     {
         /// <summary>

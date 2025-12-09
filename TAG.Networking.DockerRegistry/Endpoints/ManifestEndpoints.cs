@@ -182,9 +182,12 @@ namespace TAG.Networking.DockerRegistry.Endpoints
                 throw new ForbiddenException(new DockerErrors(DockerErrorCode.DENIED, "Storage quota exceeded."), apiHeader);
             }
 
+
+            await Database.FindDelete<DanglingDockerBlob>(new FilterAnd(new FilterFieldEqualTo("Digest", Image.Manifest.GetConfig().Digest)));
+
             foreach (IImageLayer Layer in Manifest.GetLayers())
             {
-                DanglingDockerBlob[] Deleted = (await Database.FindDelete<DanglingDockerBlob>(new FilterAnd(new FilterFieldEqualTo("Digest", Layer.Digest)))).ToArray();
+                await Database.FindDelete<DanglingDockerBlob>(new FilterAnd(new FilterFieldEqualTo("Digest", Layer.Digest)));
             }
 
             Log.Informational("Docker image uploaded.", Image.RepositoryName, Request.User.UserName,
