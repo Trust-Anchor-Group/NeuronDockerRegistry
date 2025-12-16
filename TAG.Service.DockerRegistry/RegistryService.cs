@@ -98,6 +98,8 @@ namespace TAG.Service.DockerRegistry
                     await Blob.OnDanglingBlobDeleted();
             };
 
+            Export.RegisterFolders("DockerRegistryBLOBs", "Docker Registry BLOBs", Path.Combine(Gateway.AppDataFolder, "DockerRegistry"));
+
             return Task.CompletedTask;
         }
 
