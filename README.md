@@ -16,33 +16,37 @@ For details on the HTTP API, refer to the official [Docker Registry HTTP API v2 
 
 ### Basic workflow
 
+
+
 Replace `<neuron-host>` and placeholders with your actual values.
 
-1. Log in to the registry:
+1. Go to `https://<neuron-host>/DockerRegistry/DockerUsers.md` and create a docker user
+
+2. Open the user and create a repository to upload images to.
+
+3. Log in to the registry:
 
    ```bash
-   docker login <neuron-host> -u <broker-account> -p <password>
+   docker login <neuron-host>
    ```
 
-2. Tag an image to push to a repository under an organization or user:
+4. Tag an image to push to a repository under an organization or user:
 
    ```bash
-   docker tag myapp:latest <neuron-host>/ORGNAME/myapp:latest
+   docker tag myapp:latest <neuron-host>/<REPOSITORY_NAME>:latest
    ```
 
-3. Push the image:
+5. Push the image:
 
    ```bash
-   docker push <neuron-host>/ORGNAME/myapp:latest
+   docker push <neuron-host>/<REPOSITORY_NAME>:latest
    ```
 
-4. Pull the image later:
+6. Pull the image later:
 
    ```bash
-   docker pull <neuron-host>/ORGNAME/myapp:latest
+   docker pull <neuron-host>/<REPOSITORY_NAME>:latest
    ```
-
-The hostname and repository name must match how actors and repositories are configured in the Neuron (see concepts and access control below).
 
 ---
 
