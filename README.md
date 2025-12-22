@@ -74,9 +74,7 @@ Replace `<neuron-host>` and placeholders with your actual values.
 ## Registry Administrative Management
 
 > The built-in dashboard lives under:
->
 > `https://<neuron>/DockerRegistry/`
->
 > Use the **Settings**, **Users**, **Organizations** and **Repositories** pages to manage actors, storage and repositories.
 
 ### General
