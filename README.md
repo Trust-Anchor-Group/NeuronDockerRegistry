@@ -1,205 +1,209 @@
-# NeuronDockerRegistry
+# Neuron Docker Registry
+ 
+This service is a Docker registry implementation that runs as a TAG Neuron service. It allows users to upload, download and manage Docker and OCI images on the Neuron.
 
-Contains a service that can run on a TAG Neuron, that hosts a Docker Image Registry using the Docker Registry API v2.
+For details on the HTTP API, refer to the official [Docker Registry HTTP API v2 specification](https://distribution.github.io/distribution/spec/api/#:~:text=The%20Docker%20Registry%20HTTP%20API,images%20and%20enable%20their%20distribution.).
 
-## Projects
+---
 
-The solution contains the following C# projects:
+## Quick Start
 
-| Project                         | Framework         | Description |
-|:--------------------------------|:------------------|:------------|
-| `TAG.Networking.DockerRegistry` | .NET Standard 2.0 | Class library that provides HTTP resources defined by the [Docker Registry API v2](https://docs.docker.com/registry/spec/api/). |
-| `TAG.Service.DockerRegistry`    | .NET Standard 2.0 | Service module for the [TAG Neuron](https://lab.tagroot.io/Documentation/Index.md), hosting a Docker Registry on the Neuron where it is installed. |
+### Prerequisites
 
-## Nugets
+- A running Neuron with the Docker Registry service deployed.
+- A Broker Account with appropriate Docker-related privileges.
+- Docker CLI installed on your machine.
 
-The following nugets external are used. They faciliate common programming tasks, and
-enables the libraries to be hosted on an [IoT Gateway](https://github.com/PeterWaher/IoTGateway).
-This includes hosting the bridge on the [TAG Neuron](https://lab.tagroot.io/Documentation/Index.md).
-They can also be used standalone.
+### Basic workflow
 
-| Nuget                                                                                              | Description |
-|:---------------------------------------------------------------------------------------------------|:------------|
-| [Waher.Content](https://www.nuget.org/packages/Waher.Content/)                                     | Pluggable architecture for accessing, encoding and decoding Internet Content. |
-| [Waher.Events](https://www.nuget.org/packages/Waher.Events/)                                       | An extensible architecture for event logging in the application. |
-| [Waher.IoTGateway](https://www.nuget.org/packages/Waher.IoTGateway/)                               | Contains the [IoT Gateway](https://github.com/PeterWaher/IoTGateway) hosting environment. |
-| [Waher.Networking](https://www.nuget.org/packages/Waher.Networking/)                               | Tools for working with communication, including troubleshooting. |
-| [Waher.Networking.HTTP](https://www.nuget.org/packages/Waher.Networking.HTTP/)                     | Library for publishing information and services via HTTP. |
-| [Waher.Runtime.Cache](https://www.nuget.org/packages/Waher.Runtime.Cache/)                         | Helps the service maintain in-memory caches. |
-| [Waher.Runtime.Inventory](https://www.nuget.org/packages/Waher.Runtime.Inventory/)                 | Maintains an inventory of type definitions in the runtime environment, and permits easy instantiation of suitable classes, and inversion of control (IoC). |
-| [Waher.Security](https://www.nuget.org/packages/Waher.Security/)                                   | Contains basic cryptography functions. |
-| [Waher.Security.JWS](https://www.nuget.org/packages/Waher.Security.JWS/)                           | Mananges JWS signatures of JSON objects. |
-| [Waher.Security.LoginMonitor](https://www.nuget.org/packages/Waher.Security.LoginMonitor/)         | Protects against malicious attempts to login, and allows application to log annotated information about remote endpoints. |
+Replace `<neuron-host>` and placeholders with your actual values.
 
-## Installable Package
+1. Log in to the registry:
 
-The `TAG.Service.DockerRegistry` project has been made into a package that can be downloaded and installed on any 
-[TAG Neuron](https://lab.tagroot.io/Documentation/Index.md).
-To create a package, that can be distributed or installed, you begin by creating a *manifest file*. The
-`TAG.Service.DockerRegistry` project has a manifest file called `TAG.Service.DockerRegistry.manifest`. It defines the
-assemblies and content files included in the package. You then use the `Waher.Utility.Install` and `Waher.Utility.Sign` command-line
-tools in the [IoT Gateway](https://github.com/PeterWaher/IoTGateway) repository, to create a package file and cryptographically
-sign it for secure distribution across the Neuron network.
+   ```bash
+   docker login <neuron-host> -u <broker-account> -p <password>
+   ```
 
-The Docker Registry service is published as a package on TAG Neurons. If your Neuron is connected to this network, you can install 
-the package using the following information:
+2. Tag an image to push to a repository under an organization or user:
 
-| Package information                                                                                                              ||
-|:-----------------|:---------------------------------------------------------------------------------------------------------------|
-| Package          | `TAG.DockerRegistry.package`                                                                                   |
-| Installation key | `dJV0LQfyi4T1YUhQrSIL05iGzVGhTN/O4zLBtu0tWdg+30orVyOd3PVCE/l5jetku9oklovkFIWA76035a54b7dcf1df2b411e5b5c28aca0` |
-| More Information | TBD                                                                                                            |
+   ```bash
+   docker tag myapp:latest <neuron-host>/ORGNAME/myapp:latest
+   ```
 
-## Building, Compiling & Debugging
+3. Push the image:
 
-The repository assumes you have the [IoT Gateway](https://github.com/PeterWaher/IoTGateway) repository cloned in a folder called
-`C:\My Projects\IoT Gateway`, and that this repository is placed in `C:\My Projects\NeuronDockerRegistry`. You can place the
-repositories in different folders, but you need to update the build events accordingly. To run the application, you select the
-`TAG.Service.DockerRegistry` project as your startup project. It will execute the console version of the
-[IoT Gateway](https://github.com/PeterWaher/IoTGateway), and make sure the compiled files of the `NeuronDockerRegistry` solution
-is run with it.
+   ```bash
+   docker push <neuron-host>/ORGNAME/myapp:latest
+   ```
 
-## Configuring Docker
+4. Pull the image later:
 
-Docker runs virtual machines from container images. Docker itself (for instance, if you run 
-[Docker Desktop](https://www.docker.com/products/docker-desktop/)), is a command-line tool that runs within the context of a
-container. This means that even though it looks like a command-line tool running on your local development machine, it is
-actually running on a separate (albeit virtual) machine. This means, that `localhost` refers to itself, not your development machine.
-To Docker, your local development machine is called `host.docker.internal`. Furthermore, for Docker to connect to your local
-development machine and run against your local Docker Registry service, you need to configure Docker to accept *unsecure*
-(i.e. unencrypted) communication with `host.docker.internal`, as you will not have a valid certificate for this domain. You perform
-this configuration by editing the *Docker daemon configuration file*. If runnint Docker Desktop, this configuration file is
-available under *Settings/Docker Engine*. There you can edit the configuration file, which is a simple JSON file. You need to
-add an entry to `insecure-registries` (or add the entry if one is missing), as shown in the example below.
+   ```bash
+   docker pull <neuron-host>/ORGNAME/myapp:latest
+   ```
 
-```json
-{
-  "builder": {
-    "features": {
-      "buildkit": true
-    },
-    "gc": {
-      "defaultKeepStorage": "20GB",
-      "enabled": true
-    }
-  },
-  "experimental": false,
-  "insecure-registries": [
-    "host.docker.internal:8080"
-  ]
-}
-```
+The hostname and repository name must match how actors and repositories are configured in the Neuron (see concepts and access control below).
 
-You also need to enable *Docker Content Trust*. This cannot be done by either the docker command-line or Docker Desktop GUI. It is
-done in the operating system. In Windows, this can be performed using the `setx` command:
+---
 
-```
-setx DOCKER_CONTENT_TRUST 1
-```
+## Core Concepts
 
-The Docker Engine needs to be restarted afterwards. Once Docker Trust is enabled, you need to generate signing keys. You can do this
-using the following docker command:
+- **Docker Actor**  
+  An actor is the logical owner of registries and repositories. All registries are created by an actor. Actors:
+  - Can own repositories or be whitelisted on repositories.
+  - Have a maximum unique BLOB storage limit.
+  - Represent either an organization or an individual user.
 
-```
-docker trust key generate docker-signer1
-```
+  When performing a request on the Neuron, an actor is chosen based on information from the Broker Account authenticating via HTTP Basic Auth, following the [Docker v2 specification](https://distribution.github.io/distribution/spec/api/#:~:text=The%20Docker%20Registry%20HTTP%20API,images%20and%20enable%20their%20distribution.).
 
-This command will generate a docker-signer1.pub file containing the public key, while maintainin the private key to itself.
+- **Docker Organization**  
+  A Docker organization is an actor where every Broker Account or administrative user whose Legal Identity `ORGNAME` property matches the organization’s `Organization Name` (as shown on the `/DockerOrganization.md` page) has access to that actor.
 
-## Configuring Neuron User Credentials
+- **Docker User**  
+  A Docker user is an actor that is accessible by the Broker Account whose user name matches the `Broker Account` property on the `/DockerUser.md` page.
 
-Once the DockerRegistry is installed on a Neuron, you need to configure user access privileges for Docker. A Docker client typically
-access a Docker Registry using some form of credentials that give access to upload and download features. On the Neuron, the 
-privileges defined are:
+- **Used Storage**  
+  Used storage is calculated as the total size of all unique BLOBs that your images reference. If images A, B and C reference the same BLOBs, the used storage is the same as if you only had image A.
 
-* `Docker.Upload` gives a user rights to upload images to the registry.
-* `Docker.Download` allows access to existing uploaded images.
+---
 
-Make sure you create a user with the above privileges when testing the registry with a Docker client.
+## Registry Administrative Management
 
-## Example Docker commands
+> The built-in dashboard lives under:
+>
+> `https://<neuron>/DockerRegistry/`
+>
+> Use the **Settings**, **Users**, **Organizations** and **Repositories** pages to manage actors, storage and repositories.
 
-To login to your local registry on your development machine, you issue the following Docker command, where you replace the
-`USERNAME` and `PASSWORD` with the corresponding credentials configured in the previous step: (Here, it is assumed your local
-developmen Neuron accepts requests on port 8080.)
+### General
 
-```
-docker login host.docker.internal:8080 -u USERNAME -p PASSWORD
-```
+- Users with global administrative privileges `Administrator.Docker.*` can manage all users and organizations.
+- Users with specific administrative privileges `DockerRegistry.*` can manage only the resources owned by the actors available to them.
+- Only `Administrator.Docker.*` can edit max storage and create new organizations and users.
 
-To build an image on you local machine, you type (IMAGE is the name of the image you build, PATH is where the `Dockerfile` is 
-located):
+### Users (`/DockerUsers.md`)
 
-```
-Docker build -t IMAGE PATH
-```
+- Any administrator with `Administrator.Docker.Create` can:
+  - Create Docker users.
+  - See all existing users.
+- If you have `DockerRegistry.Read`, you can see any user that you own.
 
-If you have downloaded an image from another registry, or created your own image, and wish to upload it to your local registry,
-or a remote registry, you will have to tag it for your that registry first. You tag a remote image for your local repository
-as follows:
+### Organizations (`/DockerOrganizations.md`)
 
-```
-docker tag docker.io/hello-world host.docker.internal:8080/hello-world
-```
+- Any administrator with `Administrator.Docker.Create` can:
+  - Create organizations.
+  - See all existing organizations.
+- If you have `DockerRegistry.Read`, you can see any organization you belong to.
 
-You tag a local image for upload to a remote registry as follows:
+### Auto-create Repositories (`/DockerOrganization.md`)
 
-```
-docker tag hello build.tagroot.io/hello
-```
+- Auto-create is **disabled by default**.
+- If enabled in the dashboard, then when an API action is performed on a repository that does not exist, the registry **may** auto-create it.
+- If you are **not** an administrator:
+  - You can only set `Auto Create Root` to a value that begins with `<ORGNAME>/`.
+- Only users with `Administrator.Docker.Update` can set `Auto Create Root` to something that does **not** start with `<ORGNAME>/`.
+- `Auto Create Root` is the required prefix for the repository name in order for auto-create to work.
 
-To upload an image (in the following example, named `hello-world`) to the registry, issue the following command, once logged in:
+Example:
 
-```
-docker push host.docker.internal:8080/hello-world
-```
+- `Auto Create Root = <ORGNAME>/`
+- `docker push <neuron>/<ORGNAME>/myservice:latest` → repository can be auto-created.
+- `docker push <neuron>/otherorg/myservice:latest` → auto-create will not apply.
 
-To sign an image (before upload), you need to have created a signing key (see above). You then issue:
+### Repositories (`/DockerRepositories.md`)
 
-```
-docker trust signer add --key docker-signer1.pub signer1 hello-world
-```
+- If you have global administrative privileges:
+  - You can list **all** repositories.
+  - You can create new repositories.
+- If you only have specific administrative privileges:
+  - You can list all repositories you have access to.
+- When creating a repository:
+  - `Owner GUID` must match the GUID of an existing actor.
+  - You can find the GUID of an actor at the bottom of their dashboard page.
 
-To pull an image (in the following example, named `hello-world`) from the registry, issue the following command, once logged in:
+### Other Maintenance
 
-```
-docker pull host.docker.internal:8080/hello-world
-```
+- Use the **Force Clean** button on `/Settings.md` to:
+  - Remove repositories whose owners no longer exist.
+  - Delete all BLOBs that are not referenced by any image on the registry.
+- This clean-up is scheduled to run every 24 hours.
 
-## Using curl
+---
 
-Many of the API resources cannot be accessed directly by the Docker command-line tool. To access these, you can use an alternative
-tool, such as the `curl` command, as is shown in the following examples. Note that the `curl` tool does not run in a separate VM
-on your machine, and so you can access your development Neuron directly, using `localhost`.
+## Access Control Overview
 
-To check API version: (Empty response=OK, error=Not OK)
+- **Repository visibility**
+  - **Public repositories** are readable by anyone.
+  - **Private repositories** are readable only by:
+    - Whitelisted users.
+    - The repository owner (either a user or an organization).
 
-```
-curl -X GET http://localhost:8080/v2/ -u USERNAME:PASSWORD
-```
+- **Privileges**
+  - Dashboards use the `DockerRegistry.*` and `Administrator.DockerRegistry.*` verbs:
+    - `Read`
+    - `Update`
+    - `Create`
+    - `Delete`
 
-Fetch the list of repositories in the registry:
+  In general:
+  - `DockerRegistry.*` → manage/read resources for actors you are associated with.
+  - `Administrator.Docker.*` → global admin operations.
 
-```
-curl -X GET http://localhost:8080/v2/_catalog -u USERNAME:PASSWORD
-```
+---
 
-If you want to use pagination in the request, you can use the `n` and `last` query parameters. If you combine this with `curl`, you
-will need to put the URL within quotes, to avoid problems with the command-line parsing:
+## How the Neuron Chooses the Effective Actor
 
-```
-curl -X GET "http://localhost:8080/v2/_catalog?n=MAXCOUNT&last=LASTRESULT" -u USERNAME:PASSWORD
-```
+The registry maps an authenticated request to one or two possible `DockerActor` identities (a user and/or an organization) and selects a single **effective actor** to perform the operation.
 
-For each repository returned by the above command, you can list its tags (which typically represent different versions of an 
-image in the repository): (Replace `<repository-name>` with the name of the repository whose tags you want to list.)
+The logic implemented in `RegistryServerV2.cs` can be summarized as follows.
 
-```
-curl -X GET http://localhost:8080/v2/hello-world/tags/list -u USERNAME:PASSWORD
-```
+### 1. Actor Sources
 
-Likewise, `n` and `last` can be used for pagination purposes.
+From the Broker Account performing the request, using its Legal Identity:
 
-```
-curl -X GET "http://localhost:8080/v2/hello-world/tags/list?n=MAXCOUNT&last=LASTRESULT" -u USERNAME:PASSWORD
-```
+- It gets the **organization actor** from the `OrgName` property.
+- It gets the **user actor** from the `UserName` property.
+
+Either, both, or neither may resolve to actual actors.
+
+### 2. When the repository already exists (common read/write/delete)
+
+- If **no** candidate actors are found:
+  - The request is rejected (access denied).
+- If **exactly one** candidate actor is found:
+  - That actor is chosen as the effective actor.
+- If **multiple** candidate actors are found (both user and organization):
+  - The owner of the repository is preferred:
+    - The actor whose `Guid` equals `Repository.OwnerGuid` is selected.
+  - If none of the candidate actors is the owner:
+    - The first actor in the list is used.
+
+### 3. When the repository does not exist yet (create / auto-create)
+
+- Start from the candidate actors (user and/or organization).
+- Filter to only those actors that have `CanAutoCreateRepository` set.
+- For each remaining actor (in order):
+  - Use a **repository-level semaphore** to avoid races between concurrent creates.
+  - Re-check whether the repository already exists (to handle concurrent creation).
+  - If the repository now exists:
+    - Return that repository paired with the actor.
+  - Otherwise:
+    - Attempt to auto-create the repository **if** the requested repository name starts with the actor’s `AutoCreateRepositoryRoot`.
+    - If auto-create succeeds:
+      - Return the newly created repository paired with the actor.
+- If no candidate actor can create the repository, or none is authorized to auto-create:
+  - No effective actor is chosen, and the caller will treat this as not found / forbidden.
+
+---
+
+## Key Consequences and Behaviour Notes
+
+- You can toggle BLOB backups in `/Settings/Backup.md`
+- When both a user and an organization are available, operations are performed as the **repository owner** where possible (via `Repository.OwnerGuid`).
+- Auto-creation is gated both by:
+  - The actor’s `CanAutoCreateRepository` option.
+  - The repository name starting with the actor’s `AutoCreateRepositoryRoot`.
+- Actors without `CanAutoCreateRepository` are **never** considered for repository auto-creation.
+- The `DELETE /v2/<name>/blobs/<digest>` endpoint is **disabled** in this implementation:
+  - Manual deletion of individual BLOBs via the Docker API is not allowed.
+  - BLOB cleanup is handled via reference tracking and the scheduled/forced clean-up mechanisms described above.

@@ -27,6 +27,9 @@ Login: /Login.md
 <div class="docker-double">
 	<form id="create-actor" action="" method="POST">
 
+{{
+	if User.HasPrivilege("Administrator.DockerRegistry.Create") then (
+		]]
 ## Create Organization
 	
 		<p>
@@ -40,6 +43,9 @@ Login: /Login.md
 		<button>Create</button>
 	</form>
 	<div>
+	[[;
+	);
+}}
 
 ## Docker Organizations
 
